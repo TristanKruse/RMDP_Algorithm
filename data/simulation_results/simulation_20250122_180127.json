@@ -1,0 +1,14 @@
+{
+    "solver": "FastestVehicleSolver",
+    "seed": 1,
+    "timestamp": "20250122_180127",
+    "total_orders": 3,
+    "orders_delivered": 1,
+    "total_delay": 0,
+    "late_orders": [],
+    "max_delay": 0,
+    "delay_values": [],
+    "total_distance": 48.297943984807254,
+    "postponed_orders": [],
+    "total_reward": 0
+}

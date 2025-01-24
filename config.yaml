@@ -1,0 +1,42 @@
+# Environment settings
+environment:
+  num_vehicles: 2                # Number of vehicles available for deliveries
+  num_customers: 5               # Number of customers with orders
+  num_restaurants: 2             # Number of restaurants
+  grid_size: 10                  # Size of the service area (e.g., 10x10 grid)
+  time_horizon: 100              # Maximum time steps per episode
+  
+# Reward settings
+reward:
+  delivery_reward: 50            # Reward for successful order delivery
+  time_penalty: 1                # Penalty per time step to encourage quick deliveries
+
+# RL algorithm hyperparameters
+rl_algorithm:
+  algorithm: "DQN"               # RL algorithm to use (e.g., DQN, PPO, A2C)
+  learning_rate: 0.001           # Learning rate for the optimizer
+  gamma: 0.99                    # Discount factor for future rewards
+  epsilon_start: 1.0             # Starting value for epsilon in epsilon-greedy policy
+  epsilon_end: 0.1               # Minimum value of epsilon
+  epsilon_decay: 0.995           # Decay rate for epsilon
+  buffer_size: 10000             # Replay buffer size (for off-policy methods)
+  batch_size: 64                 # Batch size for training the neural network
+  target_update: 10              # Frequency (in episodes) of updating the target network
+  max_episodes: 500              # Total number of episodes for training
+  max_steps_per_episode: 100     # Max steps in each episode (useful for early termination)
+
+# Neural network settings
+model:
+  hidden_layers: [128, 128]      # List defining the hidden layers in the neural network
+  activation_function: "ReLU"    # Activation function to use (e.g., ReLU, Tanh)
+  optimizer: "Adam"              # Optimizer to use (e.g., Adam, SGD)
+
+# Logging settings
+logging:
+  save_model_every: 50           # Frequency to save model checkpoints (in episodes)
+  log_interval: 10               # Frequency to log performance metrics (in episodes)
+  output_dir: "data/checkpoints" # Directory to save checkpoints and logs
+
+# Other settings
+seed: 42                          # Random seed for reproducibility
+device: "cpu"                     # Device to use for computation (e.g., "cpu" or "cuda" for GPU)

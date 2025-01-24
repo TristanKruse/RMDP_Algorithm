@@ -1,0 +1,263 @@
+# environment/route_processor.py
+from typing import Dict, List, Any
+from datatypes import Location, Vehicle
+from environment.route_processing.handlers import Handlers
+from environment.route_processing.metrics_methods import MetricsMethods
+from environment.route_processing.movement_location import MovementLocation
+from environment.route_processing.phase_management import PhaseManagement
+from environment.route_processing.service_time import ServiceTime
+from environment.route_processing.assignement_manager import AssignmentManager
+import logging
+
+# Configure logging
+logging.basicConfig(
+    level=logging.DEBUG,
+    format="%(asctime)s - %(name)s:%(lineno)d - %(levelname)s - %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+
+# Create logger instance
+logger = logging.getLogger(__name__)
+# process_all_routes
+#     └── _process_single_route
+#         └── _process_single_order
+#             └── Movement & Status Updates
+
+# lag zwischen assignement und movement? Zeile 62
+
+
+class RouteProcessor:
+    def __init__(self, location_manager, service_time: float, movement_per_step: float):
+        self.location_manager = location_manager
+        self.service_time = service_time
+        self.movement_per_step = movement_per_step
+
+        self.assignment_manager = AssignmentManager()
+        self.movement_location = MovementLocation(location_manager)
+        self.phase_management = PhaseManagement(location_manager)
+        self.service_time = ServiceTime(service_time)
+        self.metrics_methods = MetricsMethods()
+        self.handlers = Handlers(location_manager, service_time)
+
+    def _process_single_order(self, order_id, vehicle, current_loc, order_manager, current_time):
+        """Process individual order (kept largely the same but using new helper methods)"""
+        # Initialize variables
+        new_loc = current_loc
+        step_distance = 0.0
+        delay = 0.0
+        completed = False
+
+        # Get order
+        order = next((o for o in order_manager.active_orders if o.id == order_id), None)
+        if not order:
+            return current_loc, step_distance, delay, completed
+
+        # Initialize phase if needed
+        if not hasattr(vehicle, "current_phase") or vehicle.current_phase is None:
+            vehicle.current_phase = self.phase_management._initialize_vehicle_phase(order_id, order, current_loc)
+
+        # Handle service time
+        if vehicle.current_phase["is_servicing"]:
+            if self.service_time._process_service_time(vehicle.current_phase):
+                return self.handlers._handle_service_completion(vehicle, order, current_loc, current_time)
+            return current_loc, 0.0, 0.0, False
+
+        # Handle movement
+        progress = self.movement_location._update_phase_progress(vehicle.current_phase)
+        new_loc, step_distance = self.movement_location._calculate_movement(
+            vehicle.current_phase["start_loc"], vehicle.current_phase["target_loc"], progress
+        )
+
+        # Handle arrival
+        if progress >= 1.0:
+            return self.handlers._handle_arrival(vehicle, order, new_loc, current_time, order_id)
+
+        return new_loc, step_distance, delay, completed
+
+    def _process_single_route(
+        self, route: List[int], vehicle: Vehicle, current_loc: Location, order_manager, current_time: float
+    ):
+        """Process single vehicle route and collect metrics."""
+        # logger.info(f"\n[DEBUG] Processing route for vehicle {vehicle.id}: {route}")
+        metrics = {"distance": 0, "deliveries": 0, "delays": [], "late_orders": set(), "delivered_orders": set()}
+
+        if not route:
+            return metrics
+
+        order_id = route[0]
+        order = next((o for o in order_manager.active_orders if o.id == order_id), None)
+        if not order:
+            # logger.info(f"[DEBUG] Order {order_id} not found in active orders")
+            return metrics
+
+        # logger.info(f"[DEBUG] Processing order {order_id}, status: {order.status}, phase: {vehicle.current_phase}")
+
+        # Process the order
+        new_loc, distance, delay, completed = self._process_single_order(
+            order_id=order_id,
+            vehicle=vehicle,
+            current_loc=current_loc,
+            order_manager=order_manager,
+            current_time=current_time,
+        )
+
+        # Update metrics
+        metrics["distance"] += distance
+        if delay > 0:
+            metrics["delays"].append(delay)
+            metrics["late_orders"].add(order_id)
+        if completed:
+            metrics["deliveries"] += 1
+            metrics["delivered_orders"].add(order_id)
+            # logger.info(f"[DEBUG] Order {order_id} completed")
+
+        # Update vehicle location
+        vehicle.current_location = new_loc
+        # logger.info(f"[DEBUG] Updated vehicle {vehicle.id} location to: ({new_loc.x:.2f}, {new_loc.y:.2f})")
+
+        return metrics
+
+    def process_all_routes(self, route_plan, vehicle_manager, order_manager, current_time):
+        """Process all vehicle routes and update positions/states."""
+        metrics = self.metrics_methods._initialize_metrics()
+
+        # logger.info(f"\n[DEBUG] Processing routes at time {current_time}")
+
+        for vehicle_id, current_route in enumerate(route_plan):
+            vehicle = vehicle_manager.get_vehicle_by_id(vehicle_id)
+
+            logger.info(f"\n[DEBUG] Vehicle {vehicle_id} State Before Processing:")
+            logger.info(f"  Current Location: ({vehicle.current_location.x:.2f}, {vehicle.current_location.y:.2f})")
+            logger.info(f"  Current Destination: {vehicle.current_destination}")
+            logger.info(f"  Movement Progress: {getattr(vehicle, 'movement_progress', 0)}")
+            logger.info(f"  Current Route: {current_route}")
+            logger.info(f"  Current Phase: {vehicle.current_phase}")
+
+            # logger.info(f"[DEBUG] Vehicle {vehicle_id} - Current route: {current_route}")
+            # logger.info(f"[DEBUG] Vehicle {vehicle_id} - Current phase: {vehicle.current_phase}")
+
+            # Check if vehicle has valid orders to process
+            should_process_order = False
+            if current_route:
+                current_order_id = current_route[0]
+                order = next((o for o in order_manager.active_orders if o.id == current_order_id), None)
+                if order:
+                    should_process_order = True
+
+            if should_process_order:
+                # Process current order movement/service
+                new_loc, distance, delay, completed = self._process_single_order(
+                    order_id=current_order_id,
+                    vehicle=vehicle,
+                    current_loc=vehicle.current_location,
+                    order_manager=order_manager,
+                    current_time=current_time,
+                )
+
+                # Update metrics
+                metrics["distance"] += distance
+                if delay > 0:
+                    metrics["delays"].append(delay)
+                    metrics["late_orders"].add(current_order_id)
+                if completed:
+                    metrics["deliveries"] += 1
+                    metrics["delivered_orders"].add(current_order_id)
+                    # logger.info(f"[DEBUG] Order {current_order_id} completed by vehicle {vehicle_id}")
+
+                # Update vehicle location
+                vehicle.current_location = new_loc
+
+            # Handle idle vehicle movement
+            elif not vehicle.current_phase:
+                self._process_idle_movement(vehicle, metrics)
+
+            else:
+                logger.info(f"[DEBUG] Vehicle {vehicle_id} has no orders or destination")
+
+        return metrics
+
+    def _process_idle_movement(self, vehicle, metrics):
+        """Process movement for idle vehicles with destinations."""
+        if not vehicle.current_destination:
+            return
+        current_time = metrics.get("current_time", 0)  # Get current simulation time
+
+        # Calculate travel time if not initialized
+        if vehicle.movement_progress == 0.0:
+            # logger.info(f"\n[MOVEMENT TEST] Vehicle {vehicle.id} starting repositioning movement at t={current_time}")
+            # logger.info(f"[MOVEMENT TEST] From: ({vehicle.current_location.x:.2f}, {vehicle.current_location.y:.2f})")
+            # logger.info(
+            #     f"[MOVEMENT TEST] To: ({vehicle.current_destination.x:.2f}, {vehicle.current_destination.y:.2f})"
+            # )
+
+            vehicle.total_travel_time = max(
+                0.001, self.location_manager.get_travel_time(vehicle.current_location, vehicle.current_destination)
+            )
+            # logger.info(f"[MOVEMENT TEST] Total travel time: {vehicle.total_travel_time:.2f} minutes")
+
+            vehicle.movement_start_time = current_time
+            # logger.info(f"[MOVEMENT TEST] Expected travel time: {vehicle.total_travel_time:.2f} minutes")
+
+        # Update progress
+        step_size = 1.0
+        old_progress = vehicle.movement_progress
+        vehicle.movement_progress = min(1.0, old_progress + (step_size / vehicle.total_travel_time))
+        # logger.info(f"HESDF[MOVEMENT TEST] New progress: {vehicle.movement_progress:.2f}")
+        # logger.info(f"HESDFvehicle.total_travel_time: {vehicle.total_travel_time:.2f}")
+
+        # logger.info(f"Before update - Location: ({vehicle.current_location.x:.2f}, {vehicle.current_location.y:.2f})")
+        # logger.info(
+        #     f"Before update - Destination: ({vehicle.current_destination.x:.2f}, {vehicle.current_destination.y:.2f})"
+        # )
+
+        # Calculate new position
+        new_loc = self.location_manager.interpolate_position(
+            vehicle.current_location, vehicle.current_destination, vehicle.movement_progress
+        )
+
+        # Update vehicle location and track distance
+        old_loc = vehicle.current_location
+        vehicle.current_location = new_loc
+        step_distance = self.location_manager.get_travel_time(old_loc, new_loc)
+        metrics["distance"] += step_distance
+        # logger.info(f"After update - Location: ({vehicle.current_location.x:.2f}, {vehicle.current_location.y:.2f})")
+
+        # Reset when destination reached
+        if vehicle.movement_progress >= 1.0:
+            vehicle.current_destination = None
+            vehicle.movement_progress = 0.0
+            vehicle.total_travel_time = 0.0
+            logger.info(f"[RESET] Vehicle {vehicle.id} movement_progress reset to 0.0 in _process_idle_movement")
+            actual_travel_time = current_time - vehicle.movement_start_time
+            logger.info(f"\n[MOVEMENT TEST] Vehicle {vehicle.id} completed repositioning")
+            logger.info(f"[MOVEMENT TEST] Expected travel time: {vehicle.total_travel_time:.2f} minutes")
+            logger.info(f"[MOVEMENT TEST] Actual travel time: {actual_travel_time:.2f} minutes")
+
+    # def _process_idle_movement(self, vehicle, current_loc, metrics):
+    #     """Process movement for idle vehicles with destinations."""
+    #     if not vehicle.current_destination:
+    #         return current_loc, 0.0
+
+    #     # Initialize movement params
+    #     if not hasattr(vehicle, "current_phase") or vehicle.current_phase is None:
+    #         vehicle.current_phase = {
+    #             "stage": "idle",
+    #             "total_time": max(
+    #                 0.001, self.location_manager.get_travel_time(current_loc, vehicle.current_destination)
+    #             ),
+    #             "time_spent": 0,
+    #             "start_loc": current_loc,
+    #             "target_loc": vehicle.current_destination,
+    #         }
+
+    #     # Handle movement
+    #     progress = self.movement_location._update_phase_progress(vehicle.current_phase)
+    #     new_loc, step_distance = self.movement_location._calculate_movement(
+    #         vehicle.current_phase["start_loc"], vehicle.current_phase["target_loc"], progress
+    #     )
+
+    #     # Reset when destination reached
+    #     if progress >= 1.0:
+    #         vehicle.current_phase = None
+
+    #     return new_loc, step_distance
