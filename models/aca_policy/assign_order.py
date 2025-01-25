@@ -1,4 +1,4 @@
-from typing import List, Tuple, Optional
+from typing import List, Tuple
 from datatypes import Order, State, Location
 import numpy as np
 

@@ -1,10 +1,7 @@
 
-Code aufräumen, delete, delete, delete
-Claude fragen, wofür brauche ich das, hinterfragen und dann rausschmeißen.
+speed issues, zurück zu schnelle, manchmal teleportation?
 
-# speed issues, zurück zu schnelle, manchmal teleportation?
-
-# ggf. wird genau in dem Moment eine Order assigned. oder es wird nicht richtig geresettet (bspw. current location/destination)
+ggf. wird genau in dem Moment eine Order assigned. oder es wird nicht richtig geresettet (bspw. current location/destination)
 
 
 # hin zu langsam, stimmt irgendwie nicht mit expected speed überein.

@@ -1,0 +1,22 @@
+{
+    "total_orders": 176,
+    "orders_delivered": 176,
+    "total_delay": 0,
+    "late_orders": [
+        96,
+        138,
+        128
+    ],
+    "max_delay": 11.0,
+    "delay_values": [
+        1.0,
+        11.0,
+        5.0
+    ],
+    "total_distance": 15881.225236063814,
+    "postponed_orders": [],
+    "total_reward": -17.0,
+    "solver": "fastest",
+    "seed": 1,
+    "timestamp": "20250125_153136"
+}
