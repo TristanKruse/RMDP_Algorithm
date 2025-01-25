@@ -8,7 +8,7 @@ from .postponement import PostponementHandler
 from .time_utils import TimeCalculator
 
 
-class RMDPSolver:
+class ACA:
     """
     Solver for the Restaurant Meal Delivery Problem (RMDP).
 

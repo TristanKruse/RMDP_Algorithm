@@ -1,109 +1,74 @@
-# datatpyes.py
-# Order rate, num_restaurants, num_vehicles -> driving up computing time
-from models.aca_policy.main import RMDPSolver
+from models.aca_policy.main import ACA
 from models.fastest_bundling.main import FastestBundler
 from models.fastest_vehicle.main import FastestVehicleSolver
 from environment.main import RestaurantMealDeliveryEnv
 from typing import Optional, Dict
-import os
-import json
-import csv
 from datetime import datetime
-import logging
+import os, json, csv, logging
 
-# Configure logging
 logging.basicConfig(
     level=logging.DEBUG,
     format="%(asctime)s - %(name)s:%(lineno)d - %(levelname)s - %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
 )
-
-# Create logger instance
 logger = logging.getLogger(__name__)
 
 
-# Code aufräumen, delete, delete, delete
-# Claude fragen, wofür brauche ich das, hinterfragen und dann rausschmeißen.
-
-# speed issues, zurück zu schnelle, manchmal teleportation?
-
-# ggf. wird genau in dem Moment eine Order assigned. oder es wird nicht richtig geresettet (bspw. current location/destination)
-
-
-# hin zu langsam, stimmt irgendwie nicht mit expected speed überein.
-
-# moving to the nearest “unoccupied” restaurant
-# when there are no orders to assign to a vehicle
-
-
-# decision point logik einführen, entweder bundlen oder delivern, oder zum nächsten Restaurant???
-
-
-# mit dynamischer zUWEISUNG MACHENß
-
-
-# Bundling.
-
-
-# Further, sending the
-# closest driver may limit the opportunities to assign orders to drivers that are already en route to a
-# nearby restaurant.
-# -> also muss es doch möglich sein, dass auch Vehicles die schon unterwegs sind eine Order zugeteilt kriegen.
+SOLVERS = {
+    "aca": lambda s: ACA(
+        movement_per_step=s,
+        # Core algorithm parameters
+        buffer=5.0,
+        max_postponements=3,
+        max_postpone_time=15.0,
+        # Time & Vehicle parameters
+        vehicle_capacity=3,
+        service_time=2.0,
+        mean_prep_time=10.0,
+        prep_time_var=2.0,
+        delay_normalization_factor=10.0,  # sensitivity for delays
+    ),
+    "bundle": lambda s: FastestBundler(
+        movement_per_step=s,
+        max_bundle_size=3,
+        max_restaurant_distance=2.0,
+    ),
+    "fastest": lambda s: FastestVehicleSolver(movement_per_step=s),
+}
 
 
-# If the following conditions
-# hold, a decision is feasible:
-# 1. The arrival time of the first entry of each route
-# θ ∈ Θk remains the same.
-# 2. The value VD stays unaltered for all orders D
-# with VD > 0 (assignments are permanent).
-# 3. The sequencing in Θxk
-# reflects the driver’s routing
-# routine.
-
-
-# expand bundling to also include how close customers are to each other??? Also als generelle Erweiterung
-
-
-# implement logging everywhere, instead of print statements
-
-# Bundling funktioniert nicht - Logik überlegen, wie man in route_processor.py
-# integrieren kann und wo, auf jeden Fall als separate Methode (route_processor.py, auch jetzt schon zu lang und groß)
-# Test Bundling und dann RMDPSolver step by step,
-
-
-# ggf. umprogrammieren, dass vehicle standby gegeben werden kann, von Algorithmus
-# vehicles are skipped that already have an order 54 route_processor.py
-# programmieren, dass vehiclees immer wieder richtung mitte gehen, wenn idle.
-
-# wird hier immer richtig inserted?
-
-
-def get_solver(solver_name: str, movement_per_step: float):
-    solvers = {
-        "rmdp": lambda: RMDPSolver(
-            movement_per_step=movement_per_step,
-            # Core algorithm parameters
-            buffer=5.0,
-            max_postponements=3,
-            max_postpone_time=15.0,
-            # Time & Vehicle parameters
-            vehicle_capacity=3,
-            service_time=2.0,
-            mean_prep_time=10.0,
-            prep_time_var=2.0,
-            delay_normalization_factor=10.0,  # sensitivity for delays
-        ),
-        # Fasteset vehicles + bundling
-        "bundle": lambda: FastestBundler(
-            movement_per_step=movement_per_step,
-            max_bundle_size=3,
-            max_restaurant_distance=2.0,
-        ),
-        # Fastest Vehicle Solver
-        "fastest": lambda: FastestVehicleSolver(movement_per_step=movement_per_step),
+def get_env_config(movement_per_step):
+    """Environment configuration with explanatory documentation"""
+    return {
+        # System size parameters
+        "num_restaurants": 1,  # Production: 110 restaurants in system
+        "num_vehicles": 1,  # Production: 15 delivery vehicles
+        # Time parameters
+        "mean_prep_time": 10.0,  # Gamma distributed preparation time (minutes)
+        "prep_time_var": 2.0,  # Preparation time variance (COV: 0.0-0.6)
+        "delivery_window": 40.0,  # Delivery time window (minutes)
+        "simulation_duration": 80,  # Total simulation time (minutes)
+        "cooldown_duration": 0,  # No new orders in final period (minutes)
+        # Workload parameters
+        "mean_interarrival_time": 60,  # Order frequency:
+        # Light: 1.5 orders/hr/vehicle (180 total)
+        # Normal: 2.0 orders/hr/vehicle (240 total)
+        # Heavy: 2.5 orders/hr/vehicle (300 total)
+        # Here: 60/(2.5 orders/hr/vehicle * 15 vehicles)
+        # Area parameters
+        "service_area_dimensions": (10.0, 10.0),  # 10km x 10km area
+        "downtown_concentration": 0.7,  # Restaurant concentration downtown
+        # Service parameters
+        "service_time": 2.0,  # Time at pickup/delivery locations
+        "movement_per_step": movement_per_step,
+        # Visualization
+        "visualize": True,
+        "update_interval": 0.01,  # Update frequency (0.01 or 1)
+        # Optional behavior flags (set by run_test_episode)
+        "reposition_idle_vehicles": False,  # Whether vehicles reposition when idle
+        "bundling_orders": False,  # Whether to allow order bundling
+        "seed": None,  # Random seed for reproducibility
     }
-    return solvers[solver_name]()
 
 
 def run_test_episode(
@@ -118,36 +83,14 @@ def run_test_episode(
     movement_per_step = (speed / 60) / street_network_factor  # km per minute adjusted for street network
 
     # Initialize environment and solver
-    env = RestaurantMealDeliveryEnv(
-        num_restaurants=1,  # 110,  # Number of restaurants in the system
-        num_vehicles=1,  # 15,  # Number of delivery vehicles available
-        mean_prep_time=10.0,  # Mean preparation time in minutes (Gamma distributed)
-        prep_time_var=2.0,  # Preparation time variance (COV between 0.0-0.6)
-        delivery_window=40.0,  # Time window for delivery in minutes
-        mean_interarrival_time=60,  # 60/(2.5 orders/hr/vehicle * 15 vehicles) for heavy workload
-        # Light workload: 1.5 orders/hr/vehicle (180 total)
-        # Normal workload: 2.0 orders/hr/vehicle (240 total)
-        # Heavy workload: 2.5 orders/hr/vehicle (300 total)
-        simulation_duration=simulation_duration,  # Total simulation duration in minutes
-        cooldown_duration=0,  # 60.0,  # the last X minutes no more orders
-        seed=seed,  # Random seed for reproducibility
-        service_area_dimensions=(10.0, 10.0),
-        # street_network_factor=1.4,
-        downtown_concentration=0.7,
-        # speed=40.0,
-        service_time=2.0,
-        reposition_idle_vehicles=reposition_idle_vehicles,
-        bundling_orders=bundling_orders,
-        movement_per_step=movement_per_step,
-        # visualization
-        visualize=True,
-        update_interval=0.01,  # 0.01 or 1
+    env_params = get_env_config(movement_per_step)
+    env_params.update(
+        {"seed": seed, "reposition_idle_vehicles": reposition_idle_vehicles, "bundling_orders": bundling_orders}
     )
-
-    solver = get_solver(solver_name, movement_per_step)
+    env = RestaurantMealDeliveryEnv(**env_params)
+    solver = SOLVERS[solver_name](movement_per_step)
 
     # Initialize statistics
-    # Initialize statistics with a set for postponed orders
     episode_stats = {
         "total_orders": 0,
         "orders_delivered": 0,
@@ -179,11 +122,8 @@ def run_test_episode(
             episode_stats["late_orders"].update(info["late_orders"])
             episode_stats["max_delay"] = max(episode_stats["max_delay"], max(info["delays"]))
 
-        # Block to update postponed orders
-        if "postponed_order_ids" in info:
-            episode_stats["postponed_orders"].update(info["postponed_order_ids"])
-        elif isinstance(postponed_orders, set):
-            episode_stats["postponed_orders"].update(postponed_orders)
+        episode_stats["postponed_orders"].update(info.get("postponed_order_ids", postponed_orders))
+
         state = next_state
         step += 1
 
@@ -235,27 +175,23 @@ def run_test_episode(
 
 
 def save_results(stats: Dict, solver_name: str, seed: Optional[int] = None):
-    # Save simulation results to CSV and JSON files.
-    # Create results directory if it doesn't exist
     results_dir = "data/simulation_results"
     os.makedirs(results_dir, exist_ok=True)
-
-    # Create timestamp for unique filenames
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-    # Prepare data for saving
-    save_data = {"solver": solver_name, "seed": seed, "timestamp": timestamp, **stats}
+    save_data = {
+        **stats,
+        "solver": solver_name,
+        "seed": seed,
+        "timestamp": timestamp,
+        "late_orders": list(stats["late_orders"]),
+        "postponed_orders": list(stats["postponed_orders"]),
+    }
 
-    # Convert sets to lists for JSON serialization
-    save_data["late_orders"] = list(save_data["late_orders"])
-    save_data["postponed_orders"] = list(save_data["postponed_orders"])
-
-    # Save detailed results as JSON
     json_path = os.path.join(results_dir, f"simulation_{timestamp}.json")
     with open(json_path, "w") as f:
         json.dump(save_data, f, indent=4)
 
-    # Save summary results as CSV
     csv_path = os.path.join(results_dir, "simulation_summary.csv")
     csv_exists = os.path.exists(csv_path)
 

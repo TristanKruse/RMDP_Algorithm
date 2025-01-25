@@ -1,12 +1,12 @@
 # environment/order_manager.py
-from typing import List, Set
+from typing import List, Set, Tuple
 import numpy as np
 import random
 from datatypes import Order, Location
 
 
 class OrderManager:
-    """Manages order generation and tracking for the restaurant delivery environment."""
+    """Manages order generation and tracking for delivery environment."""
 
     def __init__(
         self,
@@ -15,19 +15,8 @@ class OrderManager:
         delivery_window: float,
         service_time: float,
         mean_interarrival_time: float,
-        service_area_dimensions: tuple,
+        service_area_dimensions: Tuple[float, float],
     ):
-        """
-        Initialize the order manager.
-
-        Args:
-            mean_prep_time: Average food preparation time in minutes
-            prep_time_var: Variance in preparation time
-            delivery_window: Time allowed for delivery after order placement
-            service_time: Service time at pickup/delivery locations
-            mean_interarrival_time: Average time between orders
-            service_area_dimensions: Dimensions of service area (width, height)
-        """
         # Order generation parameters
         self.mean_prep_time = mean_prep_time
         self.prep_time_var = prep_time_var
@@ -39,28 +28,17 @@ class OrderManager:
         # Order tracking
         self.next_order_id = 0
         self.next_order_time = 0
-        self.active_orders: List[Order] = []
-        self.postponed_order_ids: Set[int] = set()
+        self.active_orders = []
+        self.postponed_order_ids = set()
 
     def reset(self) -> None:
-        """Reset order manager to initial state."""
-        self.next_order_id = 0
-        self.next_order_time = 0
-        self.active_orders.clear()
-        self.postponed_order_ids.clear()
+        self.next_order_id = self.next_order_time = 0
+        self.active_orders = []
+        self.postponed_order_ids = set()
 
     def generate_new_orders(self, current_time: float, restaurants: List[Location]) -> None:
-        """
-        Generate new orders if it's time for the next order.
-
-        Args:
-            current_time: Current simulation time
-            restaurants: List of available restaurant locations
-        """
         if current_time >= self.next_order_time:
-            new_order = self.generate_order(current_time, restaurants)
-            self.active_orders.append(new_order)
-            # Schedule next order
+            self.active_orders.append(self.generate_order(current_time, restaurants))
             self.next_order_time = current_time + np.random.exponential(self.mean_interarrival_time)
 
     def generate_order(self, current_time: float, restaurants: List[Location]) -> Order:
@@ -103,6 +81,30 @@ class OrderManager:
         print(f"[Order {order.id}] Customer location: ({customer_loc.x:.2f}, {customer_loc.y:.2f})")
         print(f"[Order {order.id}] Expected ready time: {order.ready_time:.1f}")
         print(f"[Order {order.id}] Deadline: {order.deadline:.1f}")
+
+        self.next_order_id += 1
+        return order
+
+    def generate_order(self, current_time: float, restaurants: List[Location]) -> Order:
+        restaurant = random.choice(restaurants)
+        area_width, area_height = self.service_area
+        # Generate random customer location
+        customer_loc = Location(x=random.uniform(0, area_width), y=random.uniform(0, area_height))
+        # Generate preparation time using gamma distribution
+        prep_time = np.random.gamma(
+            shape=(self.mean_prep_time**2) / self.prep_time_var, scale=self.prep_time_var / self.mean_prep_time
+        )
+
+        order = Order(
+            id=self.next_order_id,
+            request_time=current_time,
+            pickup_location=restaurant,
+            delivery_location=customer_loc,
+            deadline=current_time + self.delivery_window,
+            ready_time=current_time + prep_time,
+            service_time=self.service_time,
+            pickup_service_time=self.service_time,
+        )
 
         self.next_order_id += 1
         return order
