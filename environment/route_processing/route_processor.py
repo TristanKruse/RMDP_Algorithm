@@ -37,17 +37,92 @@ class RouteProcessor:
         self.metrics_methods = MetricsMethods()
         self.handlers = Handlers(location_manager, service_time)
 
+        # Initialize idle time tracking
+        self.total_idle_time = 0
+        self.total_time_steps = 0
+        self.vehicle_idle_times = {}
+
+    # def process_all_routes(self, route_plan, vehicle_manager, order_manager, current_time):
+    #     # 1. Initialize empty metrics dictionary
+    #     metrics = self.metrics_methods._initialize_metrics()
+
+    #     # Update total time steps
+    #     self.total_time_steps += 1
+    #     idle_vehicles = 0
+
+    #     # 2. Process each vehicle and its route in the route plan
+    #     for vehicle_id, current_route in enumerate(route_plan):
+    #         # 3. Get vehicle object
+    #         vehicle = vehicle_manager.get_vehicle_by_id(vehicle_id)
+
+    #         # 4. Skip if vehicle has no route
+    #         if not current_route:
+    #             continue
+
+    #         # Initialize vehicle idle time tracking if not exists
+    #         if vehicle_id not in self.vehicle_idle_times:
+    #             self.vehicle_idle_times[vehicle_id] = 0
+
+    #         # 5. Get first order in route and check if it exists in active orders
+    #         current_order_id = current_route[0]
+    #         order = next((o for o in order_manager.active_orders if o.id == current_order_id), None)
+
+    #         # 6. If order exists, process it
+    #         if order:
+    #             # 7. Process vehicle movement and order status, returns updated position and metrics
+    #             new_loc, distance, delay, completed = self._process_single_order(
+    #                 order_id=current_order_id,
+    #                 vehicle=vehicle,
+    #                 current_loc=vehicle.current_location,
+    #                 order_manager=order_manager,
+    #                 current_time=current_time,
+    #             )
+    #             # 8. Update metrics based on processing results
+    #             metrics["distance"] += distance
+    #             if delay > 0:
+    #                 metrics["delays"].append(delay)
+    #                 metrics["late_orders"].add(current_order_id)
+    #             if completed:
+    #                 metrics["deliveries"] += 1
+    #                 metrics["delivered_orders"].add(current_order_id)
+
+    #             # 9. Update vehicle location
+    #             vehicle.current_location = new_loc
+
+    #         # 10. If no order but vehicle is idle, process idle movement
+    #         elif not vehicle.current_phase:
+    #             self._process_idle_movement(vehicle, metrics)
+
+    #     # 11. Return accumulated metrics
+    #     return metrics
+
     def process_all_routes(self, route_plan, vehicle_manager, order_manager, current_time):
         # 1. Initialize empty metrics dictionary
         metrics = self.metrics_methods._initialize_metrics()
+
+        # Update total time steps and idle tracking
+        self.total_time_steps += 1
+        idle_vehicles = 0
 
         # 2. Process each vehicle and its route in the route plan
         for vehicle_id, current_route in enumerate(route_plan):
             # 3. Get vehicle object
             vehicle = vehicle_manager.get_vehicle_by_id(vehicle_id)
 
+            # Initialize vehicle idle time tracking
+            if vehicle_id not in self.vehicle_idle_times:
+                self.vehicle_idle_times[vehicle_id] = 0
+
+            # Check if vehicle is idle
+            is_idle = not current_route and (not hasattr(vehicle, "current_phase") or vehicle.current_phase is None)
+            if is_idle:
+                idle_vehicles += 1
+                self.vehicle_idle_times[vehicle_id] += 1
+
             # 4. Skip if vehicle has no route
             if not current_route:
+                if not vehicle.current_phase:
+                    self._process_idle_movement(vehicle, metrics)
                 continue
 
             # 5. Get first order in route and check if it exists in active orders
@@ -56,7 +131,7 @@ class RouteProcessor:
 
             # 6. If order exists, process it
             if order:
-                # 7. Process vehicle movement and order status, returns updated position and metrics
+                # 7. Process vehicle movement and order status
                 new_loc, distance, delay, completed = self._process_single_order(
                     order_id=current_order_id,
                     vehicle=vehicle,
@@ -76,11 +151,19 @@ class RouteProcessor:
                 # 9. Update vehicle location
                 vehicle.current_location = new_loc
 
-            # 10. If no order but vehicle is idle, process idle movement
-            elif not vehicle.current_phase:
-                self._process_idle_movement(vehicle, metrics)
+        # Update idle metrics
+        self.total_idle_time += idle_vehicles
+        total_vehicles = len(vehicle_manager.vehicles)
+        metrics.update(
+            {
+                "current_idle_rate": idle_vehicles / total_vehicles,
+                "average_idle_rate": self.total_idle_time / (self.total_time_steps * total_vehicles),
+                "vehicle_idle_rates": {
+                    vid: idle_time / self.total_time_steps for vid, idle_time in self.vehicle_idle_times.items()
+                },
+            }
+        )
 
-        # 11. Return accumulated metrics
         return metrics
 
     def _process_single_route(

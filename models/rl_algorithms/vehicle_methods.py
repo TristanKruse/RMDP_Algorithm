@@ -103,7 +103,7 @@ class VehicleMethods:
             prep_time_buffer = mean_prep_time + 2 * np.sqrt(prep_time_var)
             current_time += prep_time_buffer
 
-            current_time += order.pickup_service_time
+            current_time += order.service_time
             current_time += self._calculate_travel_time(order.pickup_location, order.delivery_location)
             current_time += order.service_time
 
@@ -153,7 +153,7 @@ class VehicleMethods:
             else:
                 current_time = max(current_time, order.ready_time)
 
-            current_time += order.pickup_service_time
+            current_time += order.service_time
 
             # Add travel time to delivery
             current_time += self._calculate_travel_time(order.pickup_location, order.delivery_location)
