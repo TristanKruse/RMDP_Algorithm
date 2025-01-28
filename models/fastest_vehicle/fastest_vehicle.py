@@ -31,7 +31,7 @@ class FastestVehicleSolver:
 
         # 2. Check each vehicle
         for vehicle in vehicles:
-            # Skip busy vehicles
+            # Skip busy vehicles - doesn't allow for rerouting
             if route_plan[vehicle.id]:
                 continue
             # 3. Calculate travel time to target

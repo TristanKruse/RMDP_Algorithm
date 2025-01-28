@@ -1,6 +1,7 @@
 # Restaurant Meal Delivery Problem (RMDP)
 
 A Python implementation of a dynamic vehicle routing system for restaurant meal deliveries, based on the research paper by Ulmer et al. (2021).
+open-webui serve
 
 ## Overview
 

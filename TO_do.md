@@ -1,3 +1,6 @@
+->entscheiden sich nicht, alle versuchen die selbe order zu bundlen, ...
+->schauen, wie datatype normalerweise gemacht wird bei ulmer u.ä., vermutlich so gute option?!
+
 # Bundling.
 Bundling funktioniert nicht - Logik überlegen, wie man in route_processor.py
 integrieren kann und wo, auf jeden Fall als separate Methode (route_processor.py, auch jetzt schon zu lang und groß)

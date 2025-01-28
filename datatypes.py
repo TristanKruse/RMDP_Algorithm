@@ -3,6 +3,12 @@ from dataclasses import dataclass
 from typing import List, Optional
 
 
+class NodeType(Enum):
+    RESTAURANT = "restaurant"  # Static nodes (restaurants)
+    CUSTOMER = "customer"  # Dynamic nodes (customer locations)
+    WAITING = "waiting"  # Strategic waiting points
+
+
 @dataclass(frozen=True)
 class Location:
     x: float
@@ -10,11 +16,23 @@ class Location:
 
 
 @dataclass
+class Node:
+    """Represents a location in the network (restaurant, customer, or waiting point)."""
+
+    id: int  # Unique identifier
+    type: NodeType  # Type of node
+    location: Location  # Physical location
+    is_permanent: bool  # True for restaurants/waiting points, False for customers
+
+
+@dataclass
 class Order:
-    id: int
+    id: int  # pickup, delivery & reposition
     request_time: float
-    pickup_location: Location
-    delivery_location: Location
+    pickup_node_id: int  # Restaurant node ID
+    delivery_node_id: int  # Customer node ID (dynamically created)
+    # pickup_location: Location
+    # delivery_location: Location - anstelle dessen jetzt Nodes
     deadline: float
     ready_time: Optional[float]
     service_time: float
@@ -48,10 +66,25 @@ class Vehicle:
         return f"Vehicle {self.id} at ({self.current_location.x}, {self.current_location.y})"
 
 
+@dataclass(frozen=True)
+class RouteAction:
+    type: str  # 'pickup', 'delivery', or 'reposition'
+    order_id: int
+
+
 @dataclass
 class State:
     time: float
     orders: List[Order]
     route_plan: List[List[int]]
+    unassigned_orders: List[Order]
+    vehicles: List[Vehicle]
+
+
+@dataclass
+class State:
+    time: float
+    orders: List[Order]
+    route_plan: List[List[RouteAction]]  # Changed from List[List[int]]
     unassigned_orders: List[Order]
     vehicles: List[Vehicle]

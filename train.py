@@ -1,7 +1,7 @@
 from models.aca_policy.main import ACA
-from models.fastest_bundling.main import FastestBundler
-from models.fastest_vehicle.main import FastestVehicleSolver
-from environment.main import RestaurantMealDeliveryEnv
+from models.fastest_bundling.fastest_bundler import FastestBundler
+from models.fastest_vehicle.fastest_vehicle import FastestVehicleSolver
+from environment.environment import RestaurantMealDeliveryEnv
 from typing import Optional, Dict
 from datetime import datetime
 import os, json, csv, logging
@@ -31,7 +31,6 @@ SOLVERS = {
     "bundle": lambda s: FastestBundler(
         movement_per_step=s,
         max_bundle_size=3,
-        max_restaurant_distance=2.0,
     ),
     "fastest": lambda s: FastestVehicleSolver(movement_per_step=s),
 }
@@ -41,8 +40,8 @@ def get_env_config(movement_per_step):
     """Environment configuration with explanatory documentation"""
     return {
         # System size parameters
-        "num_restaurants": 110,  # Production: 110 restaurants in system
-        "num_vehicles": 15,  # Production: 15 delivery vehicles
+        "num_restaurants": 2,  # Production: 110 restaurants in system
+        "num_vehicles": 1,  # Production: 15 delivery vehicles
         # Time parameters
         "mean_prep_time": 10.0,  # Gamma distributed preparation time (minutes)
         "prep_time_var": 2.0,  # Preparation time variance (COV: 0.0-0.6)
@@ -66,7 +65,6 @@ def get_env_config(movement_per_step):
         "update_interval": 0.01,  # Update frequency (0.01 or 1)
         # Optional behavior flags (set by run_test_episode)
         "reposition_idle_vehicles": False,  # Whether vehicles reposition when idle
-        "bundling_orders": False,  # Whether to allow order bundling
         "seed": None,  # Random seed for reproducibility
     }
 
@@ -75,7 +73,6 @@ def run_test_episode(
     solver_name: str = "fastest",
     seed: Optional[int] = None,
     reposition_idle_vehicles: bool = False,
-    bundling_orders: bool = False,
     visualize: bool = False,
     warmup_duration: int = 60,
 ):
@@ -91,7 +88,6 @@ def run_test_episode(
         {
             "seed": seed,
             "reposition_idle_vehicles": reposition_idle_vehicles,
-            "bundling_orders": bundling_orders,
             "visualize": visualize,
         }
     )
@@ -339,8 +335,7 @@ if __name__ == "__main__":
         solver_name="fastest",
         seed=1,
         reposition_idle_vehicles=False,
-        bundling_orders=False,
-        visualize=False,
+        visualize=True,
         warmup_duration=0,
     )
     logger.info("\nTest completed!")

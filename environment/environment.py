@@ -45,10 +45,8 @@ class RestaurantMealDeliveryEnv:
         visualize: bool = True,  # New parameter to control visualization
         update_interval: float = 0.01,
         reposition_idle_vehicles: bool = False,
-        bundling_orders: bool = False,
     ):
         self.reposition_idle_vehicles = reposition_idle_vehicles
-        self.bundling_orders = bundling_orders
         # Set random seeds if provided
         if seed is not None:
             random.seed(seed)
