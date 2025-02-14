@@ -9,7 +9,8 @@ class DeliveryNetworkViz:
         self.fig, self.ax = plt.subplots(figsize=(12, 10))
         self.service_area = service_area_dimensions
         self.previous_vehicle_positions = None
-        self.time_text = None  # For the time counter
+        self.time_text = None
+        self.is_paused = False
         self.setup_style()
 
     def setup_style(self):
@@ -135,30 +136,52 @@ class DeliveryNetworkViz:
                 linewidth=0.3,  # Reduced linewidth from 0.5
             )
 
-    def update_vehicle_positions(self, positions: np.ndarray, time_step: int = None):
+    def update_vehicle_positions(self, positions: np.ndarray, vehicle_ids=None, time_step: int = None):
         """Update vehicle positions and draw movement trails"""
         if positions.size > 0:
             # Update scatter plot
             self.vehicle_scatter.set_offsets(positions)
 
-            # Draw movement trails if we have previous positions
+            # Add or update vehicle ID labels
+            if vehicle_ids is not None:
+                # Remove old text annotations if they exist
+                for txt in self.ax.texts[:]:
+                    if hasattr(txt, "is_vehicle_id"):
+                        txt.remove()
+
+                # Add new text annotations
+                for pos, vid in zip(positions, vehicle_ids):
+                    txt = self.ax.text(pos[0], pos[1], str(vid), color="white", fontsize=8, ha="center", va="bottom")
+                    txt.is_vehicle_id = True
+
+            # Rest of the existing code for trails
             if self.previous_vehicle_positions is not None:
                 for prev, curr in zip(self.previous_vehicle_positions, positions):
                     line = self.ax.plot([prev[0], curr[0]], [prev[1], curr[1]], c="cyan", alpha=0.3, linewidth=0.5)[0]
                     line.is_vehicle_trail = True
 
-            # Store current positions for next update
             self.previous_vehicle_positions = positions.copy()
 
-        # Update time counter if provided
         if time_step is not None:
             self.update_time(time_step)
-
-    def start_animation(self, interval: int = 50):
-        """Start the animation"""
-        plt.show(block=False)
-        plt.pause(0.1)
 
     def close(self):
         """Close the visualization window"""
         plt.close(self.fig)
+
+    def _on_key_press(self, event):
+        """Handle key press events"""
+        if event.key == " ":  # Space bar
+            self.is_paused = not self.is_paused
+            print(f"Simulation {'paused' if self.is_paused else 'resumed'}")
+            plt.draw()
+
+    def start_animation(self, interval: int = 50):
+        """Start the animation"""
+        self.fig.canvas.mpl_connect("key_press_event", self._on_key_press)
+        plt.show(block=False)
+        plt.pause(0.1)
+
+    def is_simulation_paused(self):
+        """Return current pause state"""
+        return self.is_paused

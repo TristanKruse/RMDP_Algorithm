@@ -23,22 +23,26 @@ class VehicleOperations:
         prep_time_var: float,
         delay_normalization_factor: float,
         movement_per_step: float,
+        location_manager,
     ):
         self.route_assigner = RouteAssigner(
             service_time=service_time,
             mean_prep_time=mean_prep_time,
             delay_normalization_factor=delay_normalization_factor,
             movement_per_step=movement_per_step,
+            location_manager=location_manager 
         )
         self.time_calculator = TimeCalculator(
             mean_prep_time=mean_prep_time,
             prep_time_var=prep_time_var,
             service_time=service_time,
             delay_normalization_factor=delay_normalization_factor,
+            location_manager=location_manager
         )
         self.service_time = service_time
         self.vehicle_capacity = vehicle_capacity
         self.movement_per_step = movement_per_step
+        self.location_manager = location_manager 
 
     def find_vehicle(
         self, route_plan: List[List[int]], order: Order, buffer: float, state: State

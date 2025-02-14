@@ -1,10 +1,12 @@
-from models.aca_policy.main import ACA
+from models.aca_policy.aca_policy import ACA
 from models.fastest_bundling.fastest_bundler import FastestBundler
 from models.fastest_vehicle.fastest_vehicle import FastestVehicleSolver
 from environment.environment import RestaurantMealDeliveryEnv
+from datatypes import State
 from typing import Optional, Dict
 from datetime import datetime
 import os, json, csv, logging
+import matplotlib.pyplot as plt
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -15,8 +17,9 @@ logger = logging.getLogger(__name__)
 
 
 SOLVERS = {
-    "aca": lambda s: ACA(
-        movement_per_step=s,
+    "aca": lambda movement_per_step, location_manager: ACA(
+        movement_per_step=movement_per_step,
+        location_manager=location_manager,  # Add this parameter
         # Core algorithm parameters
         buffer=5.0,
         max_postponements=3,
@@ -26,13 +29,14 @@ SOLVERS = {
         service_time=2.0,
         mean_prep_time=10.0,
         prep_time_var=2.0,
-        delay_normalization_factor=10.0,  # sensitivity for delays
+        delay_normalization_factor=10.0,
     ),
-    "bundle": lambda s: FastestBundler(
+    "bundler": lambda s, loc_manager: FastestBundler(
         movement_per_step=s,
+        location_manager=loc_manager,
         max_bundle_size=3,
     ),
-    "fastest": lambda s: FastestVehicleSolver(movement_per_step=s),
+    "fastest": lambda s, loc_manager: FastestVehicleSolver(movement_per_step=s, location_manager=loc_manager),
 }
 
 
@@ -40,16 +44,17 @@ def get_env_config(movement_per_step):
     """Environment configuration with explanatory documentation"""
     return {
         # System size parameters
-        "num_restaurants": 2,  # Production: 110 restaurants in system
-        "num_vehicles": 1,  # Production: 15 delivery vehicles
+        "num_restaurants": 110,  # Production: 110 restaurants in system
+        "num_vehicles": 15,  # Production: 15 delivery vehicles
         # Time parameters
         "mean_prep_time": 10.0,  # Gamma distributed preparation time (minutes)
         "prep_time_var": 2.0,  # Preparation time variance (COV: 0.0-0.6)
         "delivery_window": 40.0,  # Delivery time window (minutes)
-        "simulation_duration": 420,  # Total simulation time (minutes)
+        "simulation_duration": 420,  # 420 # Total simulation time (minutes)
         "cooldown_duration": 60,  # No new orders in final period (minutes)
         # Workload parameters
         "mean_interarrival_time": 1.5,  # Order frequency:
+        # Andersrum??, kleinere interarrival time = mehr Orders ...
         # Light: 1.5 orders/hr/vehicle (180 total)
         # Normal: 2.0 orders/hr/vehicle (240 total)
         # Heavy: 2.5 orders/hr/vehicle (300 total)
@@ -64,8 +69,49 @@ def get_env_config(movement_per_step):
         "visualize": True,
         "update_interval": 0.01,  # Update frequency (0.01 or 1)
         # Optional behavior flags (set by run_test_episode)
-        "reposition_idle_vehicles": False,  # Whether vehicles reposition when idle
+        "reposition_idle_vehicles": True,  # Whether vehicles reposition when idle
         "seed": None,  # Random seed for reproducibility
+    }
+
+
+def prepare_solver_input(state: State) -> dict:
+    """Extracts decision-relevant information from full state (following Ulmer et al.).
+
+    Returns dict containing:
+    - tk: current time
+    - Dk: orders with their properties (tD, RD, VD, LD)
+    - Θk: current route plan
+    - and objects for nearest neighbour, nodes + vehcile positions
+    """
+    # Get vehicle assignments from current routes
+    vehicle_assignments = {}
+    for vehicle_id, route in state.route_plan.items():
+        # Access the sequence attribute of Route object
+        for node_id, pickups, deliveries in route.sequence:
+            # Combine pickups and deliveries to get all orders at this node
+            for order_id in pickups | deliveries:
+                vehicle_assignments[order_id] = vehicle_id
+
+    # Extract necessary order information (tD, RD, VD, LD)
+    orders_info = {}
+    for order in state.orders:
+        if order.id in state.unassigned_orders:  # Only include unassigned orders
+            orders_info[order.id] = {
+                "request_time": order.request_time,
+                "pickup_node_id": order.pickup_node_id,
+                "delivery_node_id": order.delivery_node_id,
+            }
+
+    # Add vehicle positions, needed for fastest vehicle sovler
+    vehicle_positions = {}
+    for vehicle in state.vehicles:  # Iterate directly over list
+        vehicle_positions[vehicle.id] = vehicle.current_location
+
+    return {
+        "time": state.time,  # tk: point of time
+        "unassigned_orders": orders_info,  # Dk: set of orders with their properties
+        "route_plan": state.route_plan,  # Θk: current route plan
+        "vehicle_positions": vehicle_positions,  # for fastest vehicle, nearest neighbour
     }
 
 
@@ -76,7 +122,8 @@ def run_test_episode(
     visualize: bool = False,
     warmup_duration: int = 60,
 ):
-    simulation_duration = 420  # 420
+    # is_paused = False
+    simulation_duration = simulation_duration = get_env_config(None)["simulation_duration"]  # 420
     speed = 40.0  # km/h as per paper
     street_network_factor = 1.4  # as per paper
     movement_per_step = (speed / 60) / street_network_factor  # km per minute adjusted for street network
@@ -92,7 +139,8 @@ def run_test_episode(
         }
     )
     env = RestaurantMealDeliveryEnv(**env_params)
-    solver = SOLVERS[solver_name](movement_per_step)
+    # solver = SOLVERS[solver_name](movement_per_step)
+    solver = SOLVERS[solver_name](movement_per_step, env.location_manager)
 
     # Initialize statistics
     episode_stats = {
@@ -122,8 +170,14 @@ def run_test_episode(
     total_reward = 0
     step = 0
 
+    # Pausing functionality
     while not done and step < simulation_duration:
-        route_plan, postponed_orders = solver.solve(state)
+        # Check for pause state
+        if env.viz_manager and env.viz_manager.is_paused():
+            plt.pause(0.1)  # Keep window responsive while paused
+            continue
+
+        route_plan, postponed_orders = solver.solve(prepare_solver_input(state))
         next_state, reward, done, info = env.step((route_plan, postponed_orders))
 
         # Add idle time tracking
@@ -163,6 +217,7 @@ def run_test_episode(
     # Calculate final metrics
     total_orders = max(1, episode_stats["total_orders"])
     delivered_orders = episode_stats["orders_delivered"]
+
     late_orders = len(episode_stats["late_orders"])
     # Before saving, calculate average rates
     episode_stats["active_period_idle_rates_by_vehicle"] = {
@@ -203,12 +258,6 @@ def run_test_episode(
     logger.info(f"Active Period Orders Per Hour: {episode_stats['active_period_orders_per_hour']:.1f}")
     logger.info(f"Theoretical Daily Capacity: {episode_stats['system_capacity']:.1f} orders")
     logger.info(f"Active Period Daily Capacity: {episode_stats['active_period_capacity']:.1f} orders")
-
-    # logger.info("\nIdle Time Metrics:")
-    # logger.info(f"Average Fleet Idle Rate: {(episode_stats['average_idle_rate'] * 100):.1f}%")
-    # logger.info("Vehicle Idle Rates:")
-    # for vid, rate in episode_stats["idle_rates_by_vehicle"].items():
-    #     logger.info(f"  Vehicle {vid}: {(rate * 100):.1f}%")
 
     logger.info("\nActive Idle Time Metrics:")
     logger.info(f"Active Period Idle Rate: {(episode_stats['active_period_idle_rate'] * 100):.1f}%")
@@ -334,7 +383,7 @@ if __name__ == "__main__":
     stats = run_test_episode(
         solver_name="fastest",
         seed=1,
-        reposition_idle_vehicles=False,
+        reposition_idle_vehicles=True,
         visualize=True,
         warmup_duration=0,
     )

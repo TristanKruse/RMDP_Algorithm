@@ -1,7 +1,7 @@
 from typing import List, Tuple
 import numpy as np
 import random
-from datatypes import Location
+from datatypes import Location, Node
 
 
 class LocationManager:
@@ -30,14 +30,17 @@ class LocationManager:
             raise ValueError("Progress must be between 0 and 1")
         return Location(x=start.x + (end.x - start.x) * progress, y=start.y + (end.y - start.y) * progress)
 
-    def generate_restaurant_locations(self) -> List[Location]:
+    def generate_restaurant_locations(self) -> List[Node]:
         return [
-            (
-                self._generate_downtown_location()
-                if random.random() < self.downtown_concentration
-                else self._generate_uniform_location()
+            Node(
+                id=i,
+                location=(
+                    self._generate_downtown_location()
+                    if random.random() < self.downtown_concentration
+                    else self._generate_uniform_location()
+                ),
             )
-            for _ in range(self.num_restaurants)
+            for i in range(self.num_restaurants)
         ]
 
     def _generate_downtown_location(self) -> Location:
@@ -49,7 +52,4 @@ class LocationManager:
         return Location(x=random.uniform(0, self.service_area[0]), y=random.uniform(0, self.service_area[1]))
 
     def get_restaurant_positions(self) -> np.ndarray:
-        return np.array([[r.x, r.y] for r in self.restaurants])
-
-    def is_location_in_service_area(self, location: Location) -> bool:
-        return 0 <= location.x <= self.service_area[0] and 0 <= location.y <= self.service_area[1]
+        return np.array([[r.location.x, r.location.y] for r in self.restaurants])

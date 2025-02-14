@@ -1,24 +1,26 @@
 # environment.py
 import random
 import numpy as np
-from typing import Tuple, List, Optional
+from typing import Tuple, Optional, Dict
 from environment.state_handler import StateHandler
 from environment.order_manager import OrderManager
 from environment.vehicle_manager import VehicleManager
 from environment.route_processing.route_processor import RouteProcessor
 from environment.location_manager import LocationManager
 from environment.visualization import VisualizationManager
-from datatypes import State
+from datatypes import State, Route
 import logging
 
+# Configure logging format
 logging.basicConfig(
     level=logging.DEBUG,
-    format="%(asctime)s - %(name)s:%(lineno)d - %(levelname)s - %(message)s",
+    format="%(asctime)s - %(filename)s:%(lineno)d - %(levelname)s - %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
 )
+
 # Silence matplotlib and PIL debug messages
-logging.getLogger("matplotlib").setLevel(logging.WARNING)
-logging.getLogger("PIL").setLevel(logging.WARNING)
+for logger_name in ["matplotlib", "PIL"]:
+    logging.getLogger(logger_name).setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
 
@@ -47,6 +49,8 @@ class RestaurantMealDeliveryEnv:
         reposition_idle_vehicles: bool = False,
     ):
         self.reposition_idle_vehicles = reposition_idle_vehicles
+
+        logger.info(f"CHECKINGPASS: {self.reposition_idle_vehicles}")
         # Set random seeds if provided
         if seed is not None:
             random.seed(seed)
@@ -84,7 +88,10 @@ class RestaurantMealDeliveryEnv:
             service_area_dimensions,
         )
         self.route_processor = RouteProcessor(
-            service_time=service_time, location_manager=self.location_manager, movement_per_step=movement_per_step
+            service_time=service_time, location_manager=self.location_manager, 
+            movement_per_step=movement_per_step, 
+            reposition_idle_vehicles=reposition_idle_vehicles ,
+            vehicle_manager=self.vehicle_manager
         )
         self.state_handler = StateHandler(num_vehicles=num_vehicles)
 
@@ -92,9 +99,18 @@ class RestaurantMealDeliveryEnv:
             VisualizationManager(service_area_dimensions, visualize, update_interval) if visualize else None
         )
 
-        self.route_plan = [[] for _ in range(num_vehicles)]
+        self.route_plan = {
+            i: Route(
+                vehicle_id=i,
+                sequence=[],  # Empty list of tuples (node_id, pickups, deliveries)
+                total_distance=0.0,
+                total_time=0.0,
+            )
+            for i in range(num_vehicles)
+        }
 
-    def step(self, action: Tuple[List[List[int]], set]) -> Tuple[State, float, bool, dict]:
+    def step(self, action: Tuple[Dict[int, Route], set]) -> Tuple[State, float, bool, dict]:
+        logger.info(f"self.current_time: {self.current_time}")
         # 1. Unpack the solver's action
         new_route_plan, postponed_orders = action
         self.route_plans = new_route_plan
@@ -107,20 +123,23 @@ class RestaurantMealDeliveryEnv:
             self.route_plans, self.vehicle_manager, self.order_manager, self.current_time
         )
 
-        # 4. Optional: Move idle vehicles to restaurants
-        if self.reposition_idle_vehicles:
-            self.vehicle_manager.reposition_idle_vehicles(self.get_current_state(), self.location_manager)
+        # 4. Update routes: Remove completed deliveries
+        for vehicle_id, route in self.route_plans.items():
+            if route.sequence and any(
+                order_id in step_metrics["delivered_orders"] for order_id in route.sequence[0][1]
+            ):  # Check pickups set
+                self.route_plans[vehicle_id] = Route(
+                    vehicle_id=vehicle_id,
+                    sequence=route.sequence[1:],  # Keep remaining sequence
+                    total_distance=0.0,
+                    total_time=0.0,
+                )
 
-        # 5. Update routes: Remove completed deliveries
-        for vehicle_id, route in enumerate(self.route_plans):
-            if route and route[0] in step_metrics["delivered_orders"]:
-                self.route_plans[vehicle_id] = route[1:]
-
-        # 6. State synchronization
+        # 5. State synchronization
         self.state_handler.update_route_plan(self.route_plans)
         self.order_manager.cleanup_delivered_orders()
 
-        # 7. Optional: Update visualization
+        # 6. Optional: Update visualization
         if self.viz_manager:
             self.viz_manager.update_step_visualization(
                 vehicles=self.vehicle_manager.vehicles,
@@ -129,18 +148,20 @@ class RestaurantMealDeliveryEnv:
                 current_time=self.current_time,
             )
 
-        # 8. Generate new orders (if not in cooldown)
+        # 7. Generate new orders (if not in cooldown)
         if self.current_time < self.order_generation_end_time:
             self.order_manager.generate_new_orders(
                 current_time=self.current_time,
                 restaurants=self.location_manager.restaurants,
             )
 
-        # 9. Calculate step results
-        new_state = self.state_handler.create_new_state(self.current_time, self.order_manager, self.vehicle_manager)
+        # 8. Calculate step results
+        new_state = self.state_handler.create_new_state(
+            self.current_time, self.order_manager, self.vehicle_manager, self.location_manager
+        )
         reward = -sum(step_metrics["delays"])
 
-        # 10. Update metrics
+        # 9. Update metrics
         step_metrics.update(
             {
                 "total_orders": self.order_manager.next_order_id,
@@ -151,7 +172,7 @@ class RestaurantMealDeliveryEnv:
                 "time_until_cooldown": max(0, self.order_generation_end_time - self.current_time),
             }
         )
-        # 11. Time step and return results
+        # 10. Time step and return results
         self.current_time += 1
         return new_state, reward, self.current_time >= self.simulation_duration, step_metrics
 
@@ -164,7 +185,10 @@ class RestaurantMealDeliveryEnv:
 
     def get_current_state(self) -> State:
         return self.state_handler.create_new_state(
-            current_time=self.current_time, order_manager=self.order_manager, vehicle_manager=self.vehicle_manager
+            current_time=self.current_time,
+            order_manager=self.order_manager,
+            vehicle_manager=self.vehicle_manager,
+            location_manager=self.location_manager,
         )
 
     def reset(self) -> State:

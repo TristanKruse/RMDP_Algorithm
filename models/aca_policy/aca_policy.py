@@ -7,7 +7,6 @@ from .vehicle_ops import VehicleOperations
 from .postponement import PostponementHandler
 from .time_utils import TimeCalculator
 
-
 class ACA:
     """
     Solver for the Restaurant Meal Delivery Problem (RMDP).
@@ -20,7 +19,6 @@ class ACA:
     The algorithm balances immediate service (quick delivery) with future flexibility
     (ability to handle upcoming orders efficiently).
     """
-
     def __init__(
         self,
         # Core algorithm parameters
@@ -28,28 +26,34 @@ class ACA:
         max_postponements: int,
         max_postpone_time: float,
         movement_per_step: float,
+        location_manager,  # Add this new parameter
         # Vehicle parameters
         vehicle_capacity: int = 3,
         # Time parameters
         service_time: float = 2.0,
         mean_prep_time: float = 10.0,
         prep_time_var: float = 2.0,
-        # min_service_time: float = 20.0,
-        # Cost factors
         delay_normalization_factor: float = 10.0,
     ):
         self.buffer = buffer
         self.max_postponements = max_postponements
         self.max_postpone_time = max_postpone_time
+        self.location_manager = location_manager  # Store it
 
-        # Initialize utility classes as instance attributes
+        # Initialize utility classes 
         self.route_utils = RouteUtils(vehicle_capacity)
-        self.time_calculator = TimeCalculator(mean_prep_time, prep_time_var, service_time, delay_normalization_factor)
+        self.time_calculator = TimeCalculator(
+            mean_prep_time=mean_prep_time,
+            prep_time_var=prep_time_var,
+            service_time=service_time,
+            delay_normalization_factor=delay_normalization_factor,
+            location_manager=location_manager  # Pass to TimeCalculator
+        )
 
         # Initialize component handlers with relevant parameters
         self.postponement = PostponementHandler(
             max_postponements=max_postponements,
-            max_postpone_time=max_postpone_time,  # , min_service_time=min_service_time
+            max_postpone_time=max_postpone_time,
         )
 
         self.vehicle_ops = VehicleOperations(
@@ -59,9 +63,10 @@ class ACA:
             mean_prep_time=mean_prep_time,
             prep_time_var=prep_time_var,
             delay_normalization_factor=delay_normalization_factor,
+            location_manager=location_manager  # Pass to VehicleOperations
         )
 
-    def solve(self, state: State) -> Tuple[List[List[int]], Set[Order]]:
+    def solve(self, state_dict: dict) -> Tuple[List[List[int]], Set[int]]:
         """ACA Algorithm to solve the RMDP
         Input parameters:
             state (S)
@@ -78,29 +83,29 @@ class ACA:
         """
 
         # Get set of valid order IDs at start
-        active_order_ids = {order.id for order in state.orders}
+        active_order_ids = set(state_dict["unassigned_orders"].keys())
 
         # Clean up route plan - remove any invalid orders
         cleaned_route_plan = []
-        for route in state.route_plan:
-            cleaned_route = [order_id for order_id in route if order_id in active_order_ids]
+        for route in state_dict["route_plan"].values():
+            cleaned_route = [order_id for order_id in route.sequence if order_id in active_order_ids]
             cleaned_route_plan.append(cleaned_route)
 
-        print(f"Starting solve with {len(state.unassigned_orders)} unassigned orders")
+        print(f"Starting solve with {len(state_dict['unassigned_orders'])} unassigned orders")
 
         # Update state's route plan
-        state.route_plan = cleaned_route_plan
+        route_plan = cleaned_route_plan
 
-        print(f"Starting solve with {len(state.unassigned_orders)} unassigned orders")
+        print(f"Starting solve with {len(state_dict['unassigned_orders'])} unassigned orders")
         # Handle empty state or no unassigned orders then no need to run the algorithm
-        if not state.unassigned_orders:
-            return state.route_plan, set()
+        if not state_dict["unassigned_orders"]:
+            return route_plan, set()
         # Pseudo code: 1-4 Initialization
         # x ← ∅ // Best decision
         # delay ← bigM // Delay
         # slack ← 0 // Slack
         # Initialize best route plan found so far
-        best_decision = state.route_plan.copy()
+        best_decision = route_plan.copy()
         # Initialize best delay with infinity (bigM in paper notation)
         best_delay = float("inf")
         # Initialize best slack time found
@@ -111,38 +116,42 @@ class ACA:
         # Pseudo code: 5-7 Start assignment procedure and get order sequences
         # forall ̂$ ordered set of $o // All potential sequences
         # Generate order sequences (n! sequences)
-        order_sequences = self.route_utils._generate_order_sequences(state.unassigned_orders)
-
+        order_sequences = self.route_utils._generate_order_sequences(
+            list(state_dict["unassigned_orders"].items())  # Convert dict to list
+        )
         for sequence in order_sequences:
             # Pseudo code: 8-10
             # ̂Θ ← Θ // Candidate route plan
             # ̂P ← ∅ // Set of postponements
             # forall D ∈ ̂$ // All orders in sequence
             # existing route plan
-            candidate_route = state.route_plan.copy()  # ̂Θ
+            candidate_route = route_plan.copy()  # ̂Θ
             candidate_postponed = set()  # ̂P, stores solution for current sequence
             # Process each order in sequence
-            for order in sequence:  # forall D ∈ ̂$
+            for order_id, order_info in sequence:  # forall D ∈ ̂$
 
                 # Line 14: Check if order should be postponed using the existing postponement handler
                 should_postpone = self.postponement.evaluate_postponement(
                     postponed=candidate_postponed,
                     route_plan=candidate_route,
-                    order=order,
-                    current_time=state.time,
-                    state=state,
+                    order=order_id,  # Now passing ID instead of Order object
+                    current_time=state_dict["time"],
+                    state=state_dict,
                 )
 
                 if should_postpone:
-                    candidate_postponed.add(order)
+                    candidate_postponed.add(order_id)
                     continue
 
                 # Find best vehicle (line 12) & line 13
                 # Assignement is handled with in the find_vehicle method
                 # Find best vehicle and get updated route (lines 12-13)
-                assignment = self.vehicle_ops.find_vehicle(candidate_route, order, self.buffer, state)
+                assignment = self.vehicle_ops.find_vehicle(
+                    candidate_route, order_id, self.buffer, state_dict
+                )
+                
                 if assignment is None:
-                    print(f"Warning: Could not find valid assignment for order {order.id}")
+                    print(f"Warning: Could not find valid assignment for order {order_id}")
                     continue
 
                 # Update route for assigned vehicle
@@ -151,8 +160,8 @@ class ACA:
 
             # After processing all orders in sequence, evaluate solution
             # Check if this is the best solution (lines 19-23)
-            current_delay, _ = self.time_calculator._calculate_delay(state, candidate_route)
-            current_slack = self.time_calculator._calculate_slack(state, candidate_route)
+            current_delay, _ = self.time_calculator._calculate_delay(state_dict, candidate_route)
+            current_slack = self.time_calculator._calculate_slack(state_dict, candidate_route)
 
             if current_delay < best_delay or (current_delay == best_delay and current_slack < best_slack):
                 best_decision = candidate_route.copy()

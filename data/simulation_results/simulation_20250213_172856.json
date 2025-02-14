@@ -1,0 +1,35 @@
+{
+    "total_orders": 1,
+    "orders_delivered": 1,
+    "total_delay": 0,
+    "late_orders": [],
+    "max_delay": 0,
+    "delay_values": [],
+    "total_distance": 73.2128916876546,
+    "postponed_orders": [],
+    "average_idle_rate": 0.9678571428571429,
+    "idle_rates_by_vehicle": {
+        "0": 1.0,
+        "1": 0.9357142857142857
+    },
+    "total_idle_time": 406.5,
+    "orders_per_hour": 0.14285714285714285,
+    "active_period_orders_per_hour": 0.16666666666666666,
+    "system_capacity": 3.4285714285714284,
+    "active_period_capacity": 4.0,
+    "active_period_idle_time": 346.5,
+    "active_period_steps": 360,
+    "active_period_idle_rate": 0.9625,
+    "active_period_idle_rates_by_vehicle": {
+        "0": 1.0,
+        "1": 0.7428157629185012
+    },
+    "total_reward": 0,
+    "solver": "fastest",
+    "seed": 1,
+    "timestamp": "20250213_172856",
+    "on_time_delivery_rate": 100.0,
+    "percentage_late_orders": 0.0,
+    "avg_delay_late_orders": 0,
+    "avg_distance_per_order": 73.2128916876546
+}

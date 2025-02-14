@@ -10,6 +10,7 @@ class RouteAssigner:
         mean_prep_time: float,
         delay_normalization_factor: float,
         movement_per_step: float,
+        location_manager,  # Add this parameter
     ):
         """
         Initialize the route assigner.
@@ -18,13 +19,14 @@ class RouteAssigner:
             service_time: Time spent at each stop (restaurant/customer)
             mean_prep_time: Average food preparation time at restaurants
             delay_normalization_factor: Penalty multiplier for late deliveries
-            vehicle_speed: Speed of vehicles in km/h
-            street_network_factor: Factor to convert Euclidean to street distance
+            movement_per_step: Movement speed
+            location_manager: Location manager instance
         """
         self.service_time = service_time
         self.mean_prep_time = mean_prep_time
         self.delay_normalization_factor = delay_normalization_factor
         self.movement_per_step = movement_per_step
+        self.location_manager = location_manager
 
     def _assign_order(
         self, route: List[Tuple[str, int]], order: Order, vehicle_id: int, state: State
@@ -159,12 +161,10 @@ class RouteAssigner:
             return max(0, self.mean_prep_time - (current_time - order.request_time))
         return max(0, order.ready_time - current_time)
 
+    
     def _calculate_travel_time(self, loc1: Location, loc2: Location) -> float:
-        """Calculate travel time between locations using movement_per_step."""
-        dx = loc2.x - loc1.x
-        dy = loc2.y - loc1.y
-        distance = np.sqrt(dx * dx + dy * dy)
-        return distance / self.movement_per_step
+        """Calculate travel time between locations using location_manager."""
+        return self.location_manager.get_travel_time(loc1, loc2)
 
     def _get_restaurant_id(self, order_id: int, state: State) -> int:
         """Get restaurant ID for an order."""

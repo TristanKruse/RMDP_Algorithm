@@ -2,7 +2,7 @@
 from typing import List, Tuple
 import numpy as np
 import matplotlib.pyplot as plt
-from datatypes import Location, Order, Vehicle
+from datatypes import Location, Order, Vehicle, Node
 from nn_animation.animation import DeliveryNetworkViz
 
 
@@ -12,6 +12,7 @@ class VisualizationManager:
         self.update_interval = max(0.001, update_interval)
         self.service_area_dimensions = service_area_dimensions
         self.viz = None
+        self.location_manager = None
 
     def initialize_visualization(self, restaurants=None, vehicles=None) -> None:
         if not self.enabled:
@@ -26,21 +27,27 @@ class VisualizationManager:
                 self.viz.update_vehicle_positions(vehicles)
 
     def update_step_visualization(
-        self, vehicles: List[Vehicle], active_orders: List[Order], restaurants: List[Location], current_time: float
+        self, vehicles: List[Vehicle], active_orders: List[Order], restaurants: List[Node], current_time: float
     ) -> None:
         if not self.enabled or not self.viz:
             return
+        # Update vehicle positions
         self.viz.update_vehicle_positions(
-            np.array([[v.current_location.x, v.current_location.y] for v in vehicles]), time_step=current_time
+            np.array([[v.current_location.x, v.current_location.y] for v in vehicles]),
+            vehicle_ids=[v.id for v in vehicles],
+            time_step=current_time,
         )
         if restaurants:
+            # Create customer locations array using delivery_node_id location directly
+            customer_locations = []
+            if active_orders:
+                for order in active_orders:
+                    # Access the location directly from the Node object
+                    customer_locations.append([order.delivery_node_id.location.x, order.delivery_node_id.location.y])
+
             self.viz.set_static_positions(
-                customers=(
-                    np.array([[o.delivery_location.x, o.delivery_location.y] for o in active_orders])
-                    if active_orders
-                    else np.array([])
-                ),
-                restaurants=np.array([[r.x, r.y] for r in restaurants]),
+                customers=np.array(customer_locations) if customer_locations else np.array([]),
+                restaurants=np.array([[r.location.x, r.location.y] for r in restaurants]),
             )
         plt.pause(self.update_interval)
 
@@ -63,3 +70,11 @@ class VisualizationManager:
                 "update_interval": self.update_interval,
             }
         )
+
+    def set_location_manager(self, location_manager):
+        """Set location manager reference"""
+        self.location_manager = location_manager
+
+    def is_paused(self):
+        """Check if visualization is paused"""
+        return self.viz.is_simulation_paused() if self.viz else False

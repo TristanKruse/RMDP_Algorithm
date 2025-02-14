@@ -1,3 +1,6 @@
+- Pause visualization by pressing the space bar.
+
+
 # Restaurant Meal Delivery Problem (RMDP)
 
 A Python implementation of a dynamic vehicle routing system for restaurant meal deliveries, based on the research paper by Ulmer et al. (2021).
@@ -39,6 +42,13 @@ restaurant-delivery/
 ├── datatypes.py            # Core data structures
 └── main.py                # Entry point
 ```
+
+
+## Difference between State and Decision State
+- A decision must be taken in the decision state.
+- Not all of the systems information is included in the decision state.
+- Decision states are used for the algorithms, while normal states are used for the environment.
+
 
 ## License
 

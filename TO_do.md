@@ -1,18 +1,11 @@
-->entscheiden sich nicht, alle versuchen die selbe order zu bundlen, ...
-->schauen, wie datatype normalerweise gemacht wird bei ulmer u.ä., vermutlich so gute option?!
 
-# Bundling.
-Bundling funktioniert nicht - Logik überlegen, wie man in route_processor.py
-integrieren kann und wo, auf jeden Fall als separate Methode (route_processor.py, auch jetzt schon zu lang und groß)
-Test Bundling und dann RMDPSolver step by step,
-expand bundling to also include how close customers are to each other??? Also als generelle Erweiterung
+- implement ACA
+    -Buffer
+    -Idle Verhalten
 
 # Back to Restaurant issue: 
-speed issues, zurück zu schnelle, manchmal teleportation?
+speed issues, zurück zu schnelle, manchmal teleportation.
 ggf. wird genau in dem Moment eine Order assigned. oder es wird nicht richtig geresettet (bspw. current location/destination)
-hin zu langsam, stimmt irgendwie nicht mit expected speed überein.
-moving to the nearest “unoccupied” restaurant
-when there are no orders to assign to a vehicle
 
 
 # mit dynamischer Zuweisung machen?
@@ -36,3 +29,12 @@ reflects the driver’s routing routine.
 
 # ggf. umprogrammieren, dass vehicle standby gegeben werden kann, von Algorithmus
 # wird hier immer richtig inserted?, mal double checken.
+
+# vehicle ist schon im route plan, entsprechend könnte man Decision State noch optimieren.
+
+# Pre delivery: 
+-take demand generation from the data
+-vehicle fleet from the data
+-working hours from the data
+-Take Restaurants positioning from the data
+-Vehicle speed from the data

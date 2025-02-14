@@ -12,6 +12,7 @@ class TimeCalculator:
         prep_time_var: float,
         service_time: float,
         delay_normalization_factor: float,
+        location_manager,  # Add this
         vehicle_speed: float = 40.0,
         street_network_factor: float = 1.4,
     ):
@@ -21,6 +22,7 @@ class TimeCalculator:
         self.delay_normalization_factor = delay_normalization_factor
         self.vehicle_speed = vehicle_speed
         self.street_network_factor = street_network_factor
+        self.location_manager = location_manager 
 
     def _calculate_slack(self, state: State, route_plan: List[List[int]]) -> float:
         """Calculate slack (flexibility) in route plan."""
