@@ -4,9 +4,6 @@ wie schneller machen? Wo sind die Bottlenecks?
 Kleine Tests erstellen, die die Funktionsweise testen, bspw. ob bundling funktioniert
 
 
-
-
-
 # Back to Restaurant issue: 
 speed issues, zurück zu schnelle, manchmal teleportation.
 ggf. wird genau in dem Moment eine Order assigned. oder es wird nicht richtig geresettet (bspw. current location/destination)

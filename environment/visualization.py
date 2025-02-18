@@ -2,7 +2,7 @@
 from typing import List, Tuple
 import numpy as np
 import matplotlib.pyplot as plt
-from datatypes import Location, Order, Vehicle, Node
+from datatypes import Order, Vehicle, Node
 from nn_animation.animation import DeliveryNetworkViz
 
 

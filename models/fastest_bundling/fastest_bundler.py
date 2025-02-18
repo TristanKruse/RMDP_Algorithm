@@ -1,8 +1,8 @@
 # bundling, when multiple orders at restaurant,
 # bundling, when another order is close to the restaurant
-from typing import List, Tuple, Set, Dict
+from typing import Tuple, Set, Dict
 import numpy as np
-from datatypes import State, Location, Order, Route, Optional, Node
+from datatypes import Location, Route, Optional, Node
 
 
 class FastestBundler:
@@ -82,30 +82,6 @@ class FastestBundler:
         """Calculate travel time between two locations based on movement speed."""
         dx, dy = loc2.x - loc1.x, loc2.y - loc1.y
         return np.sqrt(dx * dx + dy * dy) / self.movement_per_step
-
-    # def _find_nearest_vehicle(
-    #     self, target_node: Node, vehicle_positions: Dict[int, Location], route_plan: Dict[int, Route]
-    # ) -> Optional[int]:
-    #     # 1. Initialize tracking variables
-    #     min_travel_time = float("inf")
-    #     best_vehicle_id = None
-
-    #     # 2. Get target location directly from Node
-    #     target_loc = target_node.location
-
-    #     # 3. Check each vehicle
-    #     for vehicle_id, vehicle_loc in vehicle_positions.items():
-    #         # Skip busy vehicles - doesn't allow for rerouting
-    #         if route_plan[vehicle_id].sequence:  # Check sequence instead of route
-    #             continue
-    #         # 4. Calculate travel time to target
-    #         travel_time = self._calculate_travel_time(vehicle_loc, target_loc)
-    #         # 5. Update if this is fastest vehicle so far
-    #         if travel_time < min_travel_time:
-    #             min_travel_time = travel_time
-    #             best_vehicle_id = vehicle_id
-
-    #     return best_vehicle_id
 
     def _find_nearest_vehicle(
         self, restaurant_node: Node, vehicle_positions: Dict[int, Location], route_plan: Dict[int, Route]

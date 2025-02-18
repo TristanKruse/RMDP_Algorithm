@@ -83,10 +83,7 @@ def prepare_solver_input(state: State) -> dict:
     - Θk: current route plan
     - and objects for nearest neighbour, nodes + vehcile positions
     """
-    nodes = {
-        node.id: node 
-        for node in state.nodes.values()
-    }
+    nodes = {node.id: node for node in state.nodes.values()}
 
     # Get vehicle assignments from current routes
     vehicle_assignments = {}

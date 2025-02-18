@@ -1,6 +1,5 @@
-from typing import List, Dict, Optional, Tuple, Set
+from typing import Dict, Optional, Tuple, Set
 from datatypes import State, Location, Route
-import numpy as np
 
 # vehicle seems to always be none
 
@@ -90,42 +89,6 @@ class TimeCalculator:
 
         return total_delay, late_order_ids
 
-
-
-
-        #     for node_id, pickups, deliveries in route.sequence:
-        #         # Add travel time to node
-        #         if node_id in state["nodes"]:  # Now this check will work
-        #             node_loc = state["nodes"][node_id].location
-        #             current_time += self._calculate_travel_time(current_loc, node_loc)
-        #             current_loc = node_loc
-
-        #         # Handle pickups (restaurants)
-        #         for order_id in pickups:
-        #             order_info = state["unassigned_orders"].get(order_id)
-        #             if order_info:
-        #                 # Add prep time and service time
-        #                 expected_ready = order_info["request_time"] + self.mean_prep_time
-        #                 current_time = max(current_time, expected_ready)
-        #                 current_time += self.service_time
-
-        #         # Handle deliveries (customers)
-        #         for order_id in deliveries:
-        #             order_info = state["unassigned_orders"].get(order_id)
-        #             if order_info:
-        #                 # Add service time
-        #                 current_time += self.service_time
-        #                 # Calculate delay
-        #                 delivery_time = current_time + buffer
-        #                 deadline = order_info["request_time"] + 40.0  # Hardcoded delivery window
-        #                 delay = max(0, delivery_time - deadline)
-                        
-        #                 if delay > 0:
-        #                     total_delay += delay * self.delay_normalization_factor
-        #                     late_order_ids.add(order_id)
-
-        # return total_delay, late_order_ids
-
     def _calculate_slack(self, state: dict, route_plan: Dict[int, Route]) -> float:
         """Calculate total slack in route plan."""
         total_slack = 0.0
@@ -185,18 +148,6 @@ class TimeCalculator:
             return float("inf")
             
         return current_time
-
-    # def _calculate_travel_time(self, loc1: Location, loc2: Location) -> float:
-    #     """Calculate travel time between two locations."""
-    #     return self.location_manager.get_travel_time(loc1, loc2) if self.location_manager else 0.0
-
-    # def _calculate_travel_time(self, loc1: Location, loc2: Location) -> float:
-    #     """Calculate travel time between two locations."""
-    #     if not isinstance(loc1, Location) or not isinstance(loc2, Location):
-    #         print(f"Warning: Invalid location types - loc1: {type(loc1)}, loc2: {type(loc2)}")
-    #         return 0.0
-    #     return self.location_manager.get_travel_time(loc1, loc2) if self.location_manager else 0.0
-
 
     def _calculate_travel_time(self, loc1: Location, loc2: Location) -> float:
         """Calculate travel time between two locations."""
