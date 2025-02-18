@@ -1,7 +1,11 @@
+# ACA
+hängt sich be i10 unassigned orders auf
+wie schneller machen? Wo sind die Bottlenecks?
+Kleine Tests erstellen, die die Funktionsweise testen, bspw. ob bundling funktioniert
 
-- implement ACA
-    -Buffer
-    -Idle Verhalten
+
+
+
 
 # Back to Restaurant issue: 
 speed issues, zurück zu schnelle, manchmal teleportation.

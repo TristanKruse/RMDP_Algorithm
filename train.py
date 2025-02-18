@@ -83,6 +83,11 @@ def prepare_solver_input(state: State) -> dict:
     - Θk: current route plan
     - and objects for nearest neighbour, nodes + vehcile positions
     """
+    nodes = {
+        node.id: node 
+        for node in state.nodes.values()
+    }
+
     # Get vehicle assignments from current routes
     vehicle_assignments = {}
     for vehicle_id, route in state.route_plan.items():
@@ -112,6 +117,7 @@ def prepare_solver_input(state: State) -> dict:
         "unassigned_orders": orders_info,  # Dk: set of orders with their properties
         "route_plan": state.route_plan,  # Θk: current route plan
         "vehicle_positions": vehicle_positions,  # for fastest vehicle, nearest neighbour
+        "nodes": nodes,  # Add nodes to the state dictionary
     }
 
 
@@ -381,10 +387,10 @@ def save_results(stats: Dict, solver_name: str, seed: Optional[int] = None):
 if __name__ == "__main__":
     logger.info("Starting test episode...")
     stats = run_test_episode(
-        solver_name="fastest",
+        solver_name="aca",
         seed=1,
-        reposition_idle_vehicles=True,
-        visualize=True,
+        reposition_idle_vehicles=False,
+        visualize=False,
         warmup_duration=0,
     )
     logger.info("\nTest completed!")

@@ -1,7 +1,7 @@
 # rmdp_solver.py
 # Implements the actual solving algorithm and solution logic
-from typing import List, Tuple, Set
-from datatypes import Order, State
+from typing import List, Tuple, Set, Dict
+from datatypes import Order, State, Route
 from .route_utils import RouteUtils
 from .vehicle_ops import VehicleOperations
 from .postponement import PostponementHandler
@@ -66,75 +66,103 @@ class ACA:
             location_manager=location_manager  # Pass to VehicleOperations
         )
 
-    def solve(self, state_dict: dict) -> Tuple[List[List[int]], Set[int]]:
-        """ACA Algorithm to solve the RMDP
+    def solve(self, state_dict: dict) -> Tuple[Dict[int, Route], Set[int]]:
+        """ACA Algorithm to solve the RMDP.
+        
+        This algorithm:
+        1. Considers multiple possible sequences of order assignments
+        2. Allows for strategic postponement of orders
+        3. Uses time buffers to handle uncertainties in delivery times
+        
         Input parameters:
-            state (S)
-            time (t in state)
-            route plan (Θ in state)
-            unassigned orders ($o in state)
-            buffer (b as class parameter)
-            max_postponements (pmax as class parameter)
-            max_postpone_time (tpmax as class parameter)
+            state (S): Current system state
+            time (t in state): Current time point
+            route plan (Θ in state): Current route plan
+            unassigned orders ($o in state): Orders not yet assigned
+            buffer (b as class parameter): Time buffer for handling uncertainties
+            max_postponements (pmax as class parameter): Maximum number of orders that can be postponed
+            max_postpone_time (tpmax as class parameter): Maximum time an order can be postponed
+        
+        The algorithm follows these steps:
+        1-4. Initialization
+            x ← ∅ // Best decision
+            delay ← bigM // Delay
+            slack ← 0 // Slack
+        5-7. Start assignment procedure
+            forall ̂$ ordered set of $o // Process all potential sequences
+        8-10. For each sequence
+            ̂Θ ← Θ // Create candidate route plan
+            ̂P ← ∅ // Initialize set of postponements
+            forall D ∈ ̂$ // Process all orders in sequence
+            
         Output:
             Tuple containing:
-            - Final route plan (list of lists, each inner list represents a vehicle's route)
+            - Route plan as dictionary mapping vehicle IDs to Routes
             - Set of orders chosen for postponement
         """
-
         # Get set of valid order IDs at start
         active_order_ids = set(state_dict["unassigned_orders"].keys())
 
-        # Clean up route plan - remove any invalid orders
-        cleaned_route_plan = []
-        for route in state_dict["route_plan"].values():
-            cleaned_route = [order_id for order_id in route.sequence if order_id in active_order_ids]
-            cleaned_route_plan.append(cleaned_route)
+        # Initialize route plan dictionary
+        route_plan = {}
+        for vehicle_id, route in state_dict["route_plan"].items():
+            print(f"Processing route for vehicle {vehicle_id}")
+            print(f"Original sequence: {route.sequence}")
+            
+            # Each sequence element is a tuple (node_id, pickups, deliveries)
+            cleaned_sequence = []
+            for node_id, pickups, deliveries in route.sequence:
+                # Filter pickups and deliveries to only include active orders
+                valid_pickups = {pid for pid in pickups if pid in active_order_ids}
+                valid_deliveries = {did for did in deliveries if did in active_order_ids}
+                
+                # Only keep stops that have valid orders
+                if valid_pickups or valid_deliveries:
+                    cleaned_sequence.append((node_id, valid_pickups, valid_deliveries))
+            
+            print(f"Cleaned sequence: {cleaned_sequence}")
+            
+            route_plan[vehicle_id] = Route(
+                vehicle_id=vehicle_id,
+                sequence=cleaned_sequence,
+                total_distance=0.0,
+                total_time=0.0
+            )
 
         print(f"Starting solve with {len(state_dict['unassigned_orders'])} unassigned orders")
 
-        # Update state's route plan
-        route_plan = cleaned_route_plan
-
-        print(f"Starting solve with {len(state_dict['unassigned_orders'])} unassigned orders")
-        # Handle empty state or no unassigned orders then no need to run the algorithm
+        # Handle empty state or no unassigned orders (Step 1: Initialization)
         if not state_dict["unassigned_orders"]:
             return route_plan, set()
-        # Pseudo code: 1-4 Initialization
-        # x ← ∅ // Best decision
-        # delay ← bigM // Delay
-        # slack ← 0 // Slack
-        # Initialize best route plan found so far
-        best_decision = route_plan.copy()
-        # Initialize best delay with infinity (bigM in paper notation)
-        best_delay = float("inf")
-        # Initialize best slack time found
-        best_slack = 0
-        # Initialize set of orders that will be postponed
-        best_postponed = set()
-        postponed_orders = set()  # stores the overall solution for the best sequence
-        # Pseudo code: 5-7 Start assignment procedure and get order sequences
-        # forall ̂$ ordered set of $o // All potential sequences
-        # Generate order sequences (n! sequences)
-        order_sequences = self.route_utils._generate_order_sequences(
-            list(state_dict["unassigned_orders"].items())  # Convert dict to list
-        )
-        for sequence in order_sequences:
-            # Pseudo code: 8-10
-            # ̂Θ ← Θ // Candidate route plan
-            # ̂P ← ∅ // Set of postponements
-            # forall D ∈ ̂$ // All orders in sequence
-            # existing route plan
-            candidate_route = route_plan.copy()  # ̂Θ
-            candidate_postponed = set()  # ̂P, stores solution for current sequence
-            # Process each order in sequence
-            for order_id, order_info in sequence:  # forall D ∈ ̂$
 
-                # Line 14: Check if order should be postponed using the existing postponement handler
+        # Initialize tracking variables (Steps 1-4: Initialization)
+        best_decision = {k: v.copy() for k, v in route_plan.items()}  # x ← ∅
+        best_delay = float("inf")  # delay ← bigM
+        best_slack = 0  # slack ← 0
+        best_postponed = set()  # Initialize empty set for postponed orders
+        
+        # Step 5-7: Generate order sequences
+        if isinstance(state_dict["unassigned_orders"], dict):
+            order_items = list(state_dict["unassigned_orders"].items())
+        else:
+            order_items = state_dict["unassigned_orders"]
+
+        # Generate order sequences with the correct format
+        order_sequences = self.route_utils._generate_order_sequences(order_items)
+
+        # Steps 8-10: Process each sequence
+        for sequence in order_sequences:
+            # Initialize candidate solution
+            candidate_route = {k: v.copy() for k, v in route_plan.items()}  # ̂Θ ← Θ
+            candidate_postponed = set()  # ̂P ← ∅
+
+            # Process each order in sequence (forall D ∈ ̂$)
+            for order_id, order_info in sequence:
+                # Check postponement
                 should_postpone = self.postponement.evaluate_postponement(
                     postponed=candidate_postponed,
                     route_plan=candidate_route,
-                    order=order_id,  # Now passing ID instead of Order object
+                    order_id=order_id,
                     current_time=state_dict["time"],
                     state=state_dict,
                 )
@@ -143,38 +171,55 @@ class ACA:
                     candidate_postponed.add(order_id)
                     continue
 
-                # Find best vehicle (line 12) & line 13
-                # Assignement is handled with in the find_vehicle method
-                # Find best vehicle and get updated route (lines 12-13)
+                # Find best vehicle assignment
                 assignment = self.vehicle_ops.find_vehicle(
                     candidate_route, order_id, self.buffer, state_dict
                 )
                 
-                if assignment is None:
-                    print(f"Warning: Could not find valid assignment for order {order_id}")
-                    continue
+                # if assignment is None:
+                #     print(f"Warning: Could not find valid assignment for order {order_id}")
+                #     continue
 
                 # Update route for assigned vehicle
-                # Create candidate decision (line 17)
-                candidate_route[assignment.vehicle_id] = assignment.tentative_route
+                candidate_route[assignment.vehicle_id] = Route(
+                    vehicle_id=assignment.vehicle_id,
+                    sequence=assignment.tentative_route,
+                    total_distance=0.0,
+                    total_time=0.0
+                )
 
-            # After processing all orders in sequence, evaluate solution
-            # Check if this is the best solution (lines 19-23)
+            # Evaluate solution
             current_delay, _ = self.time_calculator._calculate_delay(state_dict, candidate_route)
             current_slack = self.time_calculator._calculate_slack(state_dict, candidate_route)
 
+            # Update best solution if better
             if current_delay < best_delay or (current_delay == best_delay and current_slack < best_slack):
-                best_decision = candidate_route.copy()
+                best_decision = {k: v.copy() for k, v in candidate_route.items()}
                 best_delay = current_delay
                 best_slack = current_slack
-                best_postponed = candidate_postponed.copy()  # Make sure this gets updated
+                best_postponed = candidate_postponed.copy()
 
-        # Before returning, print debug info
-        print(f"Solver postponing {len(postponed_orders)} orders")
+        print(f"Solver postponing {len(best_postponed)} orders")
 
-        # Remove postponed orders from final route plan (line 26)
-        final_route = self.route_utils._remove_postponed_orders(best_decision, best_postponed)
+        # Remove postponed orders from final routes
+        final_routes = {}
+        for vehicle_id, route in best_decision.items():
+            # Filter the sequence to exclude postponed orders
+            new_sequence = []
+            for node_id, pickups, deliveries in route.sequence:
+                # Remove postponed orders from pickups and deliveries
+                new_pickups = pickups - best_postponed
+                new_deliveries = deliveries - best_postponed
+                
+                # Only keep stops that still have orders
+                if new_pickups or new_deliveries:
+                    new_sequence.append((node_id, new_pickups, new_deliveries))
+            
+            final_routes[vehicle_id] = Route(
+                vehicle_id=vehicle_id,
+                sequence=new_sequence,
+                total_distance=route.total_distance,
+                total_time=route.total_time
+            )
 
-        # Output: route plan Θx & postponed orders 3x
-        # Return IDs instead of Order objects
-        return final_route, {order.id for order in best_postponed}  # Return IDs instead of Order objects
+        return final_routes, best_postponed
