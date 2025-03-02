@@ -1,5 +1,4 @@
 # environment/route_processor.py
-from datatypes import Route
 from environment.route_processing.handlers import Handlers
 from environment.route_processing.metrics_methods import MetricsMethods
 from environment.route_processing.movement_location import MovementLocation
@@ -16,8 +15,6 @@ logging.basicConfig(
 
 # Create logger instance
 logger = logging.getLogger(__name__)
-
-# lag zwischen assignement und movement? Zeile 62
 
 
 class RouteProcessor:
@@ -49,7 +46,6 @@ class RouteProcessor:
         # 1. Initialize metrics and counters
         metrics = self.metrics_methods._initialize_metrics()
         self.total_time_steps += 1
-        idle_vehicles = 0
 
         # 2. Process each vehicle's route
         for vehicle_id, route in route_plan.items():
@@ -63,10 +59,7 @@ class RouteProcessor:
             # Handle idle vehicles
             is_idle = not current_route and (not hasattr(vehicle, "current_phase") or vehicle.current_phase is None)
             if is_idle:
-                logger.info(f"Vehicle {vehicle_id} is idle")
-                logger.info(f"Current destination: {vehicle.current_destination}")
-                logger.info(f"Movement progress: {vehicle.movement_progress}")
-                idle_vehicles += 1
+                # idle_vehicles += 1
                 self.vehicle_idle_times[vehicle_id] += 1
 
                 # In route_processor.py
@@ -79,7 +72,6 @@ class RouteProcessor:
                             route_plan  # Add this
                         )
                     if vehicle.current_destination:
-                        logger.info(f"Moving idle vehicle {vehicle_id} to destination")
                         self._execute_idle_movement(vehicle, metrics)
                 continue
 
@@ -98,7 +90,6 @@ class RouteProcessor:
                 current_order = vehicle.current_phase.get("order_id")
                 
                 if bundle_orders:
-                    logger.info(f"Processing delivery phase for bundle: {bundle_orders}, current order: {current_order}")
                     new_loc, distance, delay, completed = self._process_bundle(
                         pickup_orders=bundle_orders,
                         vehicle=vehicle,
@@ -172,11 +163,7 @@ class RouteProcessor:
             vehicle.current_location = new_loc
 
         # Update metrics
-        self.total_idle_time += idle_vehicles
-        total_vehicles = len(vehicle_manager.vehicles)
         metrics.update({
-            "current_idle_rate": idle_vehicles / total_vehicles,
-            "average_idle_rate": self.total_idle_time / (self.total_time_steps * total_vehicles),
             "vehicle_idle_rates": {
                 vid: idle_time / self.total_time_steps 
                 for vid, idle_time in self.vehicle_idle_times.items()
@@ -187,6 +174,7 @@ class RouteProcessor:
 
     def _process_bundle(self, pickup_orders, vehicle, current_loc, order_manager, current_time):
         """Process a bundle of orders for pickup or delivery."""
+            
         # Initialize default return values
         new_loc = current_loc
         step_distance = delay = 0.0
@@ -225,9 +213,7 @@ class RouteProcessor:
 
         # Handle service state
         if vehicle.current_phase["is_servicing"]:
-            logger.info("Vehicle is in service state")
             if self.service_time._process_service_time(vehicle.current_phase):
-                logger.info("Service completed, handling completion")
                 return self.handlers._handle_service_completion(
                     vehicle=vehicle,
                     orders=bundle_orders,
@@ -246,7 +232,7 @@ class RouteProcessor:
             vehicle.current_phase["target_loc"], 
             progress
         )
-
+        
         # Check arrival
         if progress >= 1.0:
             # Validate bundle orders are still valid

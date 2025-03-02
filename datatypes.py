@@ -32,23 +32,6 @@ class Order:
     postpone_count: int = 0
 
 
-# @dataclass
-# class Vehicle:
-#     """Represents a delivery vehicle."""
-
-#     id: int
-#     initial_location: Location
-#     current_location: Location
-#     capacity: int = 3
-#     current_node_id: Optional[int] = None
-#     current_orders: Set[int] = None  # Currently carrying these orders
-#     movement_progress: float = 0.0
-#     total_travel_time: float = 0.0
-
-
-#     def __post_init__(self):
-#         if self.current_orders is None:
-#             self.current_orders = set()
 @dataclass
 class Vehicle:
     id: int

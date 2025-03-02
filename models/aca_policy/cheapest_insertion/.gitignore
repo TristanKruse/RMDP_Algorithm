@@ -1,0 +1,22 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+*.pyd
+*.dll
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+
+# Development environments
+.vscode/
+.idea/
+
+# Compiled files
+*.o
+*.obj

@@ -30,6 +30,7 @@ class Handlers:
 
     def _handle_arrival(self, vehicle, orders, new_loc, current_time, order_manager=None, route_plan=None, pickup_orders=None):
         """Handle vehicle arrival at a location."""
+
         # If we're in pickup stage, check ready times
         if vehicle.current_phase["stage"] == "pickup":
             # Get bundle orders from both sources
@@ -39,7 +40,6 @@ class Handlers:
                 bundle_orders = first_stop[1]  # Get pickup set
             elif pickup_orders:  # Fallback to pickup_orders if route_plan extraction fails
                 bundle_orders = set(pickup_orders)
-
 
             # Validate bundle information
             if not bundle_orders:
@@ -76,7 +76,10 @@ class Handlers:
                     "bundle_orders": bundle_orders,
                     "order_ids": bundle_orders
                 })
+                old_phase = "None" if vehicle.current_phase is None else vehicle.current_phase.get("stage", "unknown")
                 vehicle.current_phase = service_phase
+                new_phase = "None" if vehicle.current_phase is None else vehicle.current_phase.get("stage", "unknown")
+                logger.info(f"Vehicle {vehicle.id} phase changed: {old_phase} -> {new_phase}")
 
                 # Mark all orders in bundle as picked up
                 for order_id in bundle_orders:
@@ -135,10 +138,13 @@ class Handlers:
             first_order = next((o for o in order_manager.active_orders if o.id == first_order_id), None)
             if not first_order:
                 return current_loc, 0.0, 0.0, False
-                
+            old_phase = "None" if vehicle.current_phase is None else vehicle.current_phase.get("stage", "unknown")
+
             vehicle.current_phase = self.phase_management._initialize_delivery_phase(
                 first_order_id, current_loc, first_order.delivery_node_id
             )
+            new_phase = "None" if vehicle.current_phase is None else vehicle.current_phase.get("stage", "unknown")
+            logger.info(f"Vehicle {vehicle.id} phase changed: {old_phase} -> {new_phase}")
             # Preserve all bundle information
             vehicle.current_phase.update({
                 "is_bundle": True,

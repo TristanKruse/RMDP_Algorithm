@@ -2,5 +2,5 @@ venv/
 __pycache__/
 *.pyc
 *.pyo
-data/meituan_data/*.csv
+data/meituan_data/*
 .webui_secret_key

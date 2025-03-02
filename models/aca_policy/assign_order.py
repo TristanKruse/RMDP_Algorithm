@@ -1,6 +1,5 @@
 from typing import List, Tuple
 from datatypes import Order, State, Location
-import numpy as np
 
 
 class RouteAssigner:
@@ -161,7 +160,6 @@ class RouteAssigner:
             return max(0, self.mean_prep_time - (current_time - order.request_time))
         return max(0, order.ready_time - current_time)
 
-    
     def _calculate_travel_time(self, loc1: Location, loc2: Location) -> float:
         """Calculate travel time between locations using location_manager."""
         return self.location_manager.get_travel_time(loc1, loc2)

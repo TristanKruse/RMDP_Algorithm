@@ -18,18 +18,16 @@ logger = logging.getLogger(__name__)
 
 SOLVERS = {
     "aca": lambda movement_per_step, location_manager: ACA(
-        movement_per_step=movement_per_step,
         location_manager=location_manager,  # Add this parameter
         # Core algorithm parameters
-        buffer=5.0,
+        buffer=0,
         max_postponements=3,
-        max_postpone_time=15.0,
+        max_postpone_time=15,
         # Time & Vehicle parameters
         vehicle_capacity=3,
         service_time=2.0,
         mean_prep_time=10.0,
-        prep_time_var=2.0,
-        delay_normalization_factor=10.0,
+        delivery_window=40.0,  ### assumed to be the same for all orders, would potentially have to be adjusted.
     ),
     "bundler": lambda s, loc_manager: FastestBundler(
         movement_per_step=s,
@@ -39,6 +37,42 @@ SOLVERS = {
     "fastest": lambda s, loc_manager: FastestVehicleSolver(movement_per_step=s, location_manager=loc_manager),
 }
 
+hourly_pattern = {
+    'type': 'hourly',
+    'hourly_rates': [
+        6, 3, 1, 0.5, 0.5, 0.5,      # 0-5 AM 
+        2, 5, 10, 15, 18, 90,        # 6-11 AM
+        40, 22, 19, 19, 30, 40,      # 12-5 PM
+        62, 62, 40, 25, 18, 10       # 6-11 PM
+    ]
+}
+
+lunch_dinner_pattern = {
+    'type': 'custom_periods',
+    'custom_periods': [
+        (0.0, 0.2, 0.2),    # Early morning: 20% of base rate
+        (0.2, 0.3, 1.0),    # Late morning: 100% of base rate
+        (0.3, 0.45, 3.0),   # Lunch peak: 300% of base rate
+        (0.45, 0.6, 0.7),   # Afternoon: 70% of base rate
+        (0.6, 0.8, 2.5),    # Dinner peak: 250% of base rate
+        (0.8, 1.0, 0.5),    # Late night: 50% of base rate
+    ]
+}
+
+def bimodal_demand(time_percent):
+    """Generate a bimodal distribution with peaks at lunch and dinner."""
+    import numpy as np
+    # Create two normal distributions centered at lunch and dinner times
+    lunch_peak = np.exp(-((time_percent - 0.4) ** 2) / 0.005)  # Peak around 40% of the day
+    dinner_peak = np.exp(-((time_percent - 0.7) ** 2) / 0.005) # Peak around 70% of the day
+    # Combine the distributions and scale
+    return 0.2 + 2.8 * (lunch_peak + dinner_peak)  # Base 0.2, peaks at 3.0
+
+
+function_pattern = {
+    'type': 'function',
+    'function': bimodal_demand
+}
 
 def get_env_config(movement_per_step):
     """Environment configuration with explanatory documentation"""
@@ -53,7 +87,7 @@ def get_env_config(movement_per_step):
         "simulation_duration": 420,  # 420 # Total simulation time (minutes)
         "cooldown_duration": 60,  # No new orders in final period (minutes)
         # Workload parameters
-        "mean_interarrival_time": 1.5,  # Order frequency:
+        "mean_interarrival_time": 2,  # Order frequency:
         # Andersrum??, kleinere interarrival time = mehr Orders ...
         # Light: 1.5 orders/hr/vehicle (180 total)
         # Normal: 2.0 orders/hr/vehicle (240 total)
@@ -71,6 +105,7 @@ def get_env_config(movement_per_step):
         # Optional behavior flags (set by run_test_episode)
         "reposition_idle_vehicles": True,  # Whether vehicles reposition when idle
         "seed": None,  # Random seed for reproducibility
+        "demand_pattern": None,# e.g., lunch_dinner_pattern,  # Pass your demand pattern here
     }
 
 
@@ -115,6 +150,7 @@ def prepare_solver_input(state: State) -> dict:
         "route_plan": state.route_plan,  # Θk: current route plan
         "vehicle_positions": vehicle_positions,  # for fastest vehicle, nearest neighbour
         "nodes": nodes,  # Add nodes to the state dictionary
+        "orders": state.orders
     }
 
 
@@ -135,7 +171,7 @@ def run_test_episode(
     env_params = get_env_config(movement_per_step)
     cooldown_duration = env_params["cooldown_duration"]
     env_params.update(
-        {
+        {   
             "seed": seed,
             "reposition_idle_vehicles": reposition_idle_vehicles,
             "visualize": visualize,
@@ -184,18 +220,9 @@ def run_test_episode(
         next_state, reward, done, info = env.step((route_plan, postponed_orders))
 
         # Add idle time tracking
-        episode_stats["total_idle_time"] += info["current_idle_rate"]
-        episode_stats["average_idle_rate"] = episode_stats["total_idle_time"] / (step + 1)
-        episode_stats["idle_rates_by_vehicle"] = info["vehicle_idle_rates"]
-
-        # Track active period metrics (before cooldown)
         if step >= warmup_duration and step < (simulation_duration - cooldown_duration):
-            episode_stats["active_period_idle_time"] += info["current_idle_rate"]
             episode_stats["active_period_steps"] += 1
-            episode_stats["active_period_idle_rate"] = (
-                episode_stats["active_period_idle_time"] / episode_stats["active_period_steps"]
-            )
-            # Update per-vehicle rates
+            # We'll only track per-vehicle rates during active period
             for vid, rate in info["vehicle_idle_rates"].items():
                 if vid not in episode_stats["active_period_idle_rates_by_vehicle"]:
                     episode_stats["active_period_idle_rates_by_vehicle"][vid] = []
@@ -226,6 +253,14 @@ def run_test_episode(
     episode_stats["active_period_idle_rates_by_vehicle"] = {
         vid: sum(rates) / len(rates) for vid, rates in episode_stats["active_period_idle_rates_by_vehicle"].items()
     }
+
+    # Calculate overall active period idle rate as average of vehicle rates
+    if episode_stats["active_period_idle_rates_by_vehicle"]:
+        vehicle_rates = list(episode_stats["active_period_idle_rates_by_vehicle"].values())
+        episode_stats["active_period_idle_rate"] = sum(vehicle_rates) / len(vehicle_rates)
+    else:
+        episode_stats["active_period_idle_rate"] = 0.0
+
     episode_stats = calculate_capacity_metrics(episode_stats, simulation_duration, cooldown_duration, warmup_duration)
     logger.info("\nFinal Performance Metrics:")
     logger.info(f"Total simulation steps: {step}")
@@ -341,6 +376,8 @@ def save_results(stats: Dict, solver_name: str, seed: Optional[int] = None):
         "seed": seed,
         "total_orders": stats["total_orders"],
         "orders_delivered": stats["orders_delivered"],
+        "total_delay": stats["total_delay"],
+        "total_reward": stats["total_reward"],
         "late_orders": len(stats["late_orders"]),
         "max_delay": stats["max_delay"],
         "avg_delay": sum(stats["delay_values"]) / len(stats["delay_values"]) if stats["delay_values"] else 0,
@@ -368,6 +405,8 @@ def save_results(stats: Dict, solver_name: str, seed: Optional[int] = None):
         "percentage_late_orders": late_rate,
         "avg_delay_late_orders": avg_delay,
         "avg_distance_per_order": avg_distance,
+        "Note":"To compare results at NORMAL utilization",
+        "":"aca with buffer=0, max_postponements=3, max_postpone_time=15",
     }
 
     with open(csv_path, "a", newline="") as f:

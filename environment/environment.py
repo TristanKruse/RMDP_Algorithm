@@ -43,6 +43,8 @@ class RestaurantMealDeliveryEnv:
         simulation_duration: float = 480.0,  # New parameter in minutes
         cooldown_duration: float = 60.0,  # Add cooldown parameter
         seed: Optional[int] = None,  # Add seed parameter
+        # Demand pattern configuration
+        demand_pattern: Optional[Dict] = None,  # New parameter for demand pattern
         # visualization
         visualize: bool = True,  # New parameter to control visualization
         update_interval: float = 0.01,
@@ -86,7 +88,11 @@ class RestaurantMealDeliveryEnv:
             service_time,
             mean_interarrival_time,
             service_area_dimensions,
+            demand_pattern=demand_pattern,  # Pass demand pattern to OrderManager
+            simulation_duration=simulation_duration,  # Pass simulation duration
         )
+
+
         self.route_processor = RouteProcessor(
             service_time=service_time, location_manager=self.location_manager, 
             movement_per_step=movement_per_step, 
@@ -113,10 +119,8 @@ class RestaurantMealDeliveryEnv:
         logger.info(f"self.current_time: {self.current_time}")
         # 1. Unpack the solver's action
         new_route_plan, postponed_orders = action
-        self.route_plans = new_route_plan
 
-        # 2. Order management pre-processing
-        self.order_manager.handle_postponed_orders(postponed_orders)
+        self.route_plans = new_route_plan
 
         # 3. Process vehicle movements and order deliveries
         step_metrics = self.route_processor.process_all_routes(
@@ -175,6 +179,10 @@ class RestaurantMealDeliveryEnv:
         # 10. Time step and return results
         self.current_time += 1
         return new_state, reward, self.current_time >= self.simulation_duration, step_metrics
+    
+
+
+
 
     def _setup_initial_visualization(self):
         if self.viz_manager:

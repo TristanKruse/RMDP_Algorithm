@@ -1,0 +1,54 @@
+Input: State S, time t, route plan Θ, unassigned
+orders $o, buffer b, maximal number of postponements
+pmax, maximum time allowed for
+postponement tp
+max
+Output: Route plan Θx, postponed orders 3x
+1 // Initialization
+2 x ← ∅// Best decision
+3 delay ← bigM // Delay
+4 slack ← 0// Slack
+5 // Assignment Procedure
+6 forall̂$
+ordered set of $o // All potential sequences
+7 do
+8 ̂Θ
+← Θ // Candidate route plan
+9 ̂3
+← ∅ // Set of postponements
+10 forall D ∈ ̂$
+// All orders in sequence
+11 do
+12 V←FindVehicle(̂Θ
+,D,b) // Find best vehicle
+13 ̂Θ
+← AssignOrder(̂Θ
+,D,V) // Assign order
+14 if (Postponement(̂3
+,̂Θ
+,D,pmax,tp
+max)true)
+// If postponement possible
+15 then
+16 ̂3
+← ̂3
+∪ {D}// Postpone order
+17 ˆx←(̂Θ
+,̂3
+) // Create candidate decision
+18 end
+19 if (Δ(Sˆx) < delay)∨((Δ(Sˆx) delay)∧(Slack
+(S,̂Θ
+) < slack)) // If best route plan
+20 then
+21 x ← ˆx // Update decision
+22 delay ← Δ(Sˆx)
+)
+// Update delay
+23 slack ← Slack(S,̂Θ
+) // Update slack
+24 end
+25 end
+26 Θx←Remove(Θx,3x) // Removed postponed
+orders and restaurants
+27 return Route plan Θx, Postponed orders 3x
