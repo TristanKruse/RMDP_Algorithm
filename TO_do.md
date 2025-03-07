@@ -1,36 +1,8 @@
--Simulation weiterfüttern mit Daten, Restaurant positions bspw.
-    -> einfach mal für ein Business District alles rein.
-
-
-1. Geographic Data (Highly Feasible)
-
-Restaurant locations: You could replace your randomly generated locations with actual Meituan restaurant coordinates
-Business district modeling: Define different business districts based on Meituan's data to create multiple scenario configurations
-Vehicle starting positions: Use real delivery driver starting positions
-
-
-2. Order Characteristics (Mostly Feasible)
-
-Order volumes: Match total order counts to real data
-Order distribution: Adjust time-based order patterns (instead of Poisson)
-Restaurant popularity: Weight order generation by restaurant popularity from Meituan
-
-
-
 3. Timing Parameters (Feasible with Adjustments)
-
-Preparation times: Use restaurant-specific prep times from real data
 Delivery windows: Adjust deadlines based on actual consumer expectations
 
-
-
 4. Vehicle Parameters (Challenging but Possible)
-
-Fleet size: Match to real fleet sizes
 Vehicle capacities: Adjust based on data.
-
-
-
 
 
 -Debugen von ACA, warum Ergebnisse nicht klar besser, so wie bei Ulmer?
@@ -45,7 +17,6 @@ Vehicle capacities: Adjust based on data.
 - Weitere Skripte durchgehen, effizienter machen und an Ulmers Implementierung anpassen.
     -postponement
     -route utils.
-
 
 
 Ziele:

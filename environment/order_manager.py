@@ -1,5 +1,5 @@
 # environment/order_manager.py
-from typing import List, Set, Tuple
+from typing import List, Tuple
 import numpy as np
 import random
 from datatypes import Order, Location, Node
@@ -59,11 +59,6 @@ class OrderManager:
         self.active_orders = []
         self.postponed_order_ids = set()
 
-    # def generate_new_orders(self, current_time: float, restaurants: List[Node]) -> None:
-    #     if current_time >= self.next_order_time:
-    #         self.active_orders.append(self.generate_order(current_time, restaurants))
-    #         self.next_order_time = current_time + np.random.exponential(self.mean_interarrival_time)
-
     def generate_new_orders(self, current_time: float, restaurants: List[Node]) -> None:
         if current_time >= self.next_order_time:
             self.active_orders.append(self.generate_order(current_time, restaurants))
@@ -111,26 +106,157 @@ class OrderManager:
     def get_active_orders(self) -> List[Order]:
         return self.active_orders
 
-    def get_postponed_orders(self) -> Set[int]:
-        return self.postponed_order_ids
-
     def cleanup_delivered_orders(self):
         self.active_orders = [order for order in self.active_orders if order.status != "delivered"]
 
-    def get_arrival_rate(current_time):
-        # Time in hours (assuming simulation time is in minutes)
-        hour = (current_time % 1440) / 60  # 1440 minutes = 24 hours
+
+#### For individual orders, from the Meituan dataset.
+
+    def set_real_orders(self, orders_df):
+        """
+        Set real orders from dataset to be used instead of generating random orders
         
-        # Define arrival rates for each hour (this matches your graph)
-        hourly_rates = [
-            6, 3, 1, 0.5, 0.5, 0.5,          # 0-5 AM: Low activity
-            2, 5, 10, 15, 18, 90,            # 6-11 AM: Morning rise & lunch peak
-            40, 22, 19, 19, 30, 40,          # 12-5 PM: Afternoon
-            62, 62, 40, 25, 18, 10           # 6-11 PM: Evening peak and decline
-        ]
+        Parameters:
+        -----------
+        orders_df : pandas.DataFrame
+            DataFrame containing real order data with at least:
+            - order_push_time: time when order was placed
+            - sender_lat/lng: restaurant coordinates
+            - recipient_lat/lng: customer coordinates 
+            - poi_id: restaurant ID
+            - order_id: order ID
+        """
+        # Normalize and sort the orders by push time
+        self.real_orders = orders_df.sort_values('order_push_time').reset_index(drop=True)
         
-        # Get rate for current hour
-        hour_index = int(hour)
-        if hour_index >= len(hourly_rates):
-            hour_index = len(hourly_rates) - 1
-        return hourly_rates[hour_index]
+        # Initialize the index to track which order to process next
+        self.current_order_index = 0
+        
+        # Flag to indicate we're using real orders
+        self.using_real_orders = True
+        
+        # Calculate simulation start time (use the earliest order push time)
+        self.simulation_start_time = self.real_orders['order_push_time'].min()
+        
+        logger.info(f"Loaded {len(self.real_orders)} real orders for simulation")
+        logger.info(f"Order timespan: {self.real_orders['order_push_time'].min()} to {self.real_orders['order_push_time'].max()}")
+
+    def set_order_generator(self, generator):
+        """Set custom order generator"""
+        self.order_generator = generator
+        self.using_order_generator = True
+        # Reset any existing order generation state
+        self.next_order_time = 0
+        if hasattr(self, 'current_order_index'):
+            self.current_order_index = 0
+
+    def generate_new_orders(self, current_time: float, restaurants: List[Node]) -> None:
+        """
+        Generate new orders based on simulation time
+        
+        Uses one of three approaches:
+        1. Custom OrderGenerator (if set with set_order_generator)
+        2. Real orders replay (if set with set_real_orders)
+        3. Default Poisson process
+        """
+        # Priority 1: Use custom OrderGenerator if available
+        if hasattr(self, 'using_order_generator') and self.using_order_generator:
+            # Get geo_bounds if available for coordinate conversion
+            geo_bounds = getattr(self.location_manager, 'geo_bounds', None) if hasattr(self, 'location_manager') else None
+            
+            # Generate new orders using the OrderGenerator
+            new_orders = self.order_generator.generate_orders(current_time, restaurants, geo_bounds)
+            self.active_orders.extend(new_orders)
+            
+        # Priority 2: Use existing real orders functionality
+        elif hasattr(self, 'using_real_orders') and self.using_real_orders:
+            # Skip if we've processed all orders
+            if self.current_order_index >= len(self.real_orders):
+                return
+                
+            # Calculate elapsed time in simulation
+            elapsed_minutes = current_time
+            
+            # Get the next order's timestamp
+            next_order_time = self.real_orders.iloc[self.current_order_index]['order_push_time']
+            
+            # Convert real timestamp to simulation minutes
+            next_order_minutes = (next_order_time - self.simulation_start_time).total_seconds() / 60
+            
+            # Check if it's time to add this order
+            if elapsed_minutes >= next_order_minutes:
+                # Get order details
+                order_row = self.real_orders.iloc[self.current_order_index]
+                
+                # Create order with real data
+                order = self.create_order_from_real_data(order_row, current_time)
+                self.active_orders.append(order)
+                
+                # Move to next order
+                self.current_order_index += 1
+                
+                # Log progress occasionally
+                if self.current_order_index % 10 == 0:
+                    logger.info(f"Processed {self.current_order_index}/{len(self.real_orders)} orders")
+        
+        # Priority 3: Default Poisson process
+        else:
+            if current_time >= self.next_order_time:
+                self.active_orders.append(self.generate_order(current_time, restaurants))
+                self.next_order_time = current_time + np.random.exponential(self.mean_interarrival_time)
+
+    def create_order_from_real_data(self, order_row, current_time):
+        """
+        Create an Order object using real order data
+        """
+        # Find the restaurant node in the manager
+        restaurant_node = None
+        for node in self.location_manager.restaurants:
+            if node.id == order_row['poi_id']:
+                restaurant_node = node
+                break
+        
+        # If not found, create a new node
+        if restaurant_node is None:
+            restaurant_node = Node(
+                id=int(order_row['poi_id']),
+                location=Location(
+                    x=float(order_row['sender_lat']/1000000), 
+                    y=float(order_row['sender_lng']/1000000)
+                )
+            )
+        
+        # Create customer node
+        customer_node = Node(
+            id=int(order_row['order_id']) + 1000000,  # Add offset to avoid ID collisions
+            location=Location(
+                x=float(order_row['recipient_lat']/1000000), 
+                y=float(order_row['recipient_lng']/1000000)
+            )
+        )
+        
+        # Calculate prep time from real data if available
+        if pd.notna(order_row['estimate_meal_prepare_time']) and pd.notna(order_row['order_push_time']):
+            prep_time = (order_row['estimate_meal_prepare_time'] - order_row['order_push_time']).total_seconds() / 60
+        else:
+            # Use default if no real data
+            prep_time = np.random.gamma(
+                shape=(self.mean_prep_time**2) / self.prep_time_var, 
+                scale=self.prep_time_var / self.mean_prep_time
+            )
+        
+        # Enforce reasonable prep time (between 1 and 60 minutes)
+        prep_time = max(1.0, min(60.0, prep_time))
+        
+        # Create order with real data
+        order = Order(
+            id=int(order_row['order_id']),
+            request_time=current_time,
+            pickup_node_id=restaurant_node,
+            delivery_node_id=customer_node,
+            deadline=current_time + self.delivery_window,
+            ready_time=current_time + prep_time,
+            service_time=self.service_time,
+        )
+        
+        return order

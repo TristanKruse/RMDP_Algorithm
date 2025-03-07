@@ -1,3 +1,4 @@
+from environment.meituan_data.meituan_data_config import MeituanDataConfig
 from models.aca_policy.aca_policy import ACA
 from models.fastest_bundling.fastest_bundler import FastestBundler
 from models.fastest_vehicle.fastest_vehicle import FastestVehicleSolver
@@ -79,13 +80,13 @@ def get_env_config(movement_per_step):
     return {
         # System size parameters
         "num_restaurants": 110,  # Production: 110 restaurants in system
-        "num_vehicles": 15,  # Production: 15 delivery vehicles
+        "num_vehicles": 50,  # Production: 15 delivery vehicles
         # Time parameters
-        "mean_prep_time": 10.0,  # Gamma distributed preparation time (minutes)
+        "mean_prep_time": 13.0,  # Gamma distributed preparation time (minutes) -> maybe should be Standard dist?
         "prep_time_var": 2.0,  # Preparation time variance (COV: 0.0-0.6)
         "delivery_window": 40.0,  # Delivery time window (minutes)
-        "simulation_duration": 420,  # 420 # Total simulation time (minutes)
-        "cooldown_duration": 60,  # No new orders in final period (minutes)
+        "simulation_duration": 1440,  # 420 # Total simulation time (minutes)
+        "cooldown_duration": 0,  # No new orders in final period (minutes)
         # Workload parameters
         "mean_interarrival_time": 2,  # Order frequency:
         # Andersrum??, kleinere interarrival time = mehr Orders ...
@@ -107,7 +108,6 @@ def get_env_config(movement_per_step):
         "seed": None,  # Random seed for reproducibility
         "demand_pattern": None,# e.g., lunch_dinner_pattern,  # Pass your demand pattern here
     }
-
 
 def prepare_solver_input(state: State) -> dict:
     """Extracts decision-relevant information from full state (following Ulmer et al.).
@@ -153,9 +153,10 @@ def prepare_solver_input(state: State) -> dict:
         "orders": state.orders
     }
 
-
 def run_test_episode(
     solver_name: str = "fastest",
+    district_day=None, # Combined parameter: either None or (district_id, day) tuple
+    meituan_config=None,  # New parameter for custom configuration
     seed: Optional[int] = None,
     reposition_idle_vehicles: bool = False,
     visualize: bool = False,
@@ -177,7 +178,34 @@ def run_test_episode(
             "visualize": visualize,
         }
     )
+
+    # Handle Meituan data configuration
+    if district_day is not None and meituan_config is None:
+        # Create default configuration if district_day is provided but no custom config
+        district_id, day = district_day
+        meituan_config = MeituanDataConfig(
+            district_id=district_id,
+            day=day,
+            use_restaurant_positions=True,
+            use_vehicle_count=True,         # Add this new parameter
+            use_vehicle_positions=True,
+            use_service_area=True,
+            use_real_orders=False
+        )
+    
+    # Apply Meituan data configuration to environment parameters
+    if meituan_config is not None:
+        env_params = meituan_config.apply_to_env_params(env_params)
+    
     env = RestaurantMealDeliveryEnv(**env_params)
+
+    # Apply Meituan data configuration to environment
+    if meituan_config is not None:
+        meituan_config.apply_to_environment(env)
+
+    # Reset the environment to properly initialize
+    state = env.reset()
+
     # solver = SOLVERS[solver_name](movement_per_step)
     solver = SOLVERS[solver_name](movement_per_step, env.location_manager)
 
@@ -202,12 +230,13 @@ def run_test_episode(
         "active_period_steps": 0,
         "active_period_idle_rate": 0,
         "active_period_idle_rates_by_vehicle": {},
+        "orders_per_restaurant": {},  # Track orders by restaurant ID
     }
 
-    state = env.reset()
     done = False
     total_reward = 0
     step = 0
+    order_restaurant_map = {}  # Map of order IDs to restaurant IDs
 
     # Pausing functionality
     while not done and step < simulation_duration:
@@ -218,6 +247,20 @@ def run_test_episode(
 
         route_plan, postponed_orders = solver.solve(prepare_solver_input(state))
         next_state, reward, done, info = env.step((route_plan, postponed_orders))
+
+        # Add restaurant tracking for all new orders in state
+        for order in next_state.orders:
+            if order.id not in order_restaurant_map and hasattr(order, 'pickup_node_id'):
+                order_restaurant_map[order.id] = order.pickup_node_id.id
+
+        # Orders per restaurant
+        if info["deliveries"] > 0:           
+            for order_id in info.get("delivered_orders", set()):
+                if order_id in order_restaurant_map:
+                    restaurant_id = order_restaurant_map[order_id]
+                    if restaurant_id not in episode_stats["orders_per_restaurant"]:
+                        episode_stats["orders_per_restaurant"][restaurant_id] = 0
+                    episode_stats["orders_per_restaurant"][restaurant_id] += 1
 
         # Add idle time tracking
         if step >= warmup_duration and step < (simulation_duration - cooldown_duration):
@@ -311,11 +354,34 @@ def run_test_episode(
 
     # Save results
     episode_stats["total_reward"] = total_reward
-    save_results(episode_stats, solver_name, seed)
 
+    # Orders per Restaurants
+    logger.info("\nRestaurant Distribution Metrics:")
+    if episode_stats["orders_per_restaurant"]:
+        # Sort restaurants by order count (descending)
+        sorted_restaurants = sorted(
+            episode_stats["orders_per_restaurant"].items(), 
+            key=lambda x: x[1], 
+            reverse=True
+        )
+        logger.info(f"Total restaurants served: {len(episode_stats['orders_per_restaurant'])}")
+        logger.info(f"Restaurant with most orders: ID {sorted_restaurants[0][0]} with {sorted_restaurants[0][1]} orders")
+        
+        # Calculate distribution statistics
+        order_counts = list(episode_stats["orders_per_restaurant"].values())
+        avg_orders = sum(order_counts) / len(order_counts)
+        logger.info(f"Average orders per restaurant: {avg_orders:.1f}")
+        logger.info(f"Order count distribution: Min: {min(order_counts)}, Max: {max(order_counts)}")
+        
+        # Output top 5 restaurants
+        logger.info("Top 5 restaurants by order count:")
+        for i, (r_id, count) in enumerate(sorted_restaurants[:5], 1):
+            logger.info(f"  #{i}: Restaurant {r_id} - {count} orders ({count/delivered_orders*100:.1f}% of all deliveries)")
+
+    save_results(episode_stats, solver_name, seed)
     return episode_stats
 
-
+# Helper functions to calculate and save results
 def calculate_capacity_metrics(stats, simulation_duration, cooldown_duration, warmup_duration):
     # Convert minutes to hours
     total_hours = simulation_duration / 60
@@ -329,7 +395,6 @@ def calculate_capacity_metrics(stats, simulation_duration, cooldown_duration, wa
     stats["active_period_capacity"] = stats["active_period_orders_per_hour"] * 24
 
     return stats
-
 
 def save_results(stats: Dict, solver_name: str, seed: Optional[int] = None):
     results_dir = "data/simulation_results"
@@ -361,6 +426,7 @@ def save_results(stats: Dict, solver_name: str, seed: Optional[int] = None):
         "percentage_late_orders": late_rate,
         "avg_delay_late_orders": avg_delay,
         "avg_distance_per_order": avg_distance,
+        "orders_per_restaurant": stats["orders_per_restaurant"],
     }
 
     json_path = os.path.join(results_dir, f"simulation_{timestamp}.json")
@@ -418,15 +484,84 @@ def save_results(stats: Dict, solver_name: str, seed: Optional[int] = None):
     logger.info(f"\nResults saved to:")
     logger.info(f"Detailed results: {json_path}")
     logger.info(f"Summary results: {csv_path}")
+    # Call this in save_results function:
+    visualize_restaurant_distribution(stats, solver_name, timestamp)
+
+custom_config = MeituanDataConfig(
+    district_id=1,                          # Districts 1 to 22
+    day="20221018",                         # Specify district 20221017 to 20221024
+    use_restaurant_positions=True,          # Use real restaurant positions
+    use_vehicle_count=False,                # Use real number of vehicles
+    use_vehicle_positions=False,            # Use random vehicle positions
+    use_service_area=True,                  # Use real service area dimensions
+    order_generation_mode="replay",         # default, pattern, replay
+    # None,luch_dinner_pattern, hourly_pattern or function_pattern
+    # Take mean arrival time from the env. config
+    temporal_pattern=None,   
+    simulation_start_hour=10,               # e.g., Start at 11 AM
+    simulation_duration_hours=12             # e.g., Simulate 8 hours
+)
+
+
+def visualize_restaurant_distribution(stats, solver_name, timestamp):
+    """Create a visualization of orders per restaurant"""
+    print(f"Attempting to visualize restaurant distribution. Data available: {bool(stats['orders_per_restaurant'])}")
+    if not stats["orders_per_restaurant"]:
+        return  # No data to visualize
+        
+    # Create output directory
+    viz_dir = os.path.join("data/simulation_results/visualizations")
+    os.makedirs(viz_dir, exist_ok=True)
+    
+    # Get restaurant data
+    restaurant_data = list(stats["orders_per_restaurant"].items())
+    restaurant_data.sort(key=lambda x: x[1], reverse=True)
+    
+    # Limit to top 30 restaurants for readability
+    if len(restaurant_data) > 30:
+        restaurant_data = restaurant_data[:30]
+    
+    restaurant_ids = [str(r[0]) for r in restaurant_data]
+    order_counts = [r[1] for r in restaurant_data]
+    
+    plt.figure(figsize=(12, 6))
+    bars = plt.bar(restaurant_ids, order_counts)
+    
+    # Add value labels
+    for bar in bars:
+        height = bar.get_height()
+        plt.text(bar.get_x() + bar.get_width()/2., height + 0.5,
+                f'{height:.0f}',
+                ha='center', va='bottom')
+    
+    plt.title(f'Orders Per Restaurant - {solver_name}')
+    plt.xlabel('Restaurant ID')
+    plt.ylabel('Number of Orders')
+    plt.xticks(rotation=90)
+    plt.tight_layout()
+    
+    # Save the figure
+    plt.savefig(os.path.join(viz_dir, f"restaurant_distribution_{timestamp}.png"), dpi=300)
+    plt.close()
+
+
+
+
+
+
+
+
+
 
 
 if __name__ == "__main__":
     logger.info("Starting test episode...")
     stats = run_test_episode(
-        solver_name="aca",
+        solver_name="fastest",
+        meituan_config=custom_config,
         seed=1,
         reposition_idle_vehicles=False,
-        visualize=False,
+        visualize=True,
         warmup_duration=0,
     )
     logger.info("\nTest completed!")
