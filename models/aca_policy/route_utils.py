@@ -9,20 +9,44 @@ class RouteUtils:
     def __init__(self, vehicle_capacity: int):
         self.vehicle_capacity = vehicle_capacity
     
-    def _generate_order_sequences(self, order_items) -> List[List[Tuple[int, dict]]]:
-            """Generate all possible sequences of unassigned orders.
+    # def _generate_order_sequences(self, order_items) -> List[List[Tuple[int, dict]]]:
+    #         """Generate all possible sequences of unassigned orders.
             
-            Args:
-                order_items: Either list of orders or dictionary of orders
-            Returns:
-                List of possible order sequences
-            """
-            # If we get a dictionary, convert to items list
-            if isinstance(order_items, dict):
-                order_items = list(order_items.items())
+    #         Args:
+    #             order_items: Either list of orders or dictionary of orders
+    #         Returns:
+    #             List of possible order sequences
+    #         """
+    #         # If we get a dictionary, convert to items list
+    #         if isinstance(order_items, dict):
+    #             order_items = list(order_items.items())
                 
-            # Generate all possible permutations
-            return list(permutations(order_items))
+    #         # Generate all possible permutations
+    #         return list(permutations(order_items))
+    
+    def _generate_order_sequences(self, order_items) -> List[List[Tuple[int, dict]]]:
+        """Generate order sequences, limiting permutations for large sets."""
+        # Convert to list if it's a dictionary
+        if isinstance(order_items, dict):
+            order_items = list(order_items.items())
+            
+        # Log the original number of orders
+        logger.info(f"Generating sequences for {len(order_items)} orders")
+        
+        # If we have more than 4 orders, limit permutations
+        if len(order_items) > 4:
+            # Sort by urgency (time to deadline or request time)
+            # Note: This assumes order_items is [(order_id, order_info), ...]
+            sorted_orders = sorted(order_items, 
+                                  key=lambda x: x[1].get("request_time", 0))
+            
+            logger.info(f"Limited to 1 sequence (orders sorted by request time)")
+            return [sorted_orders]  # Just use the sorted sequence
+        else:
+            # For small sets, generate all permutations as before
+            sequences = list(permutations(order_items))
+            logger.info(f"Generated {len(sequences)} permutations")
+            return sequences
 
     def _count_route_load(self, route: Route) -> int:
         """Count number of orders currently being carried in route."""

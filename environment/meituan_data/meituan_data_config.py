@@ -6,7 +6,7 @@ import logging
 import math
 from typing import Dict, Tuple, Optional
 from datatypes import Node, Location
-from environment.meituan_data.order_generator import OrderGenerator  
+from environment.order_generator import OrderGenerator  
 
 
 logger = logging.getLogger(__name__)
@@ -19,9 +19,10 @@ class MeituanDataConfig:
         district_id: int, 
         day: str,
         use_restaurant_positions: bool = True,
-        use_vehicle_count: bool = True,        # Separate parameter for vehicle count
-        use_vehicle_positions: bool = True,    # Now only controls initial positions
+        use_vehicle_count: bool = True,
+        use_vehicle_positions: bool = True,
         use_service_area: bool = True,
+        use_deadlines: bool = True,
 
         # Order generation mode
         order_generation_mode: str = "default",  # "default", "pattern", or "replay"
@@ -37,7 +38,8 @@ class MeituanDataConfig:
         self.use_vehicle_count = use_vehicle_count
         self.use_vehicle_positions = use_vehicle_positions
         self.use_service_area = use_service_area
-        
+        self.use_deadlines = use_deadlines
+
         # Data paths
         self.data_dir = os.path.join("data/meituan_data/processed/daily_orders", str(day))
         self.restaurant_file = os.path.join(self.data_dir, f"district_{district_id}_restaurants.csv")
@@ -231,7 +233,6 @@ class MeituanDataConfig:
                     closest_dist = dist
                     restaurant = r
 
-
     def create_vehicle_positions(self) -> Optional[Dict[int, Location]]:
         """Create initial positions for vehicles."""
         if not self.use_vehicle_positions or self.vehicles_df is None:
@@ -242,29 +243,7 @@ class MeituanDataConfig:
             sim_x, sim_y = self.geo_to_sim_coords(row['grab_lat'], row['grab_lng'])
             vehicle_positions[i] = Location(x=sim_x, y=sim_y)
         
-        return vehicle_positions
-    
-    # def apply_to_env_params(self, env_params: dict) -> dict:
-    #     """Apply configuration to environment parameters."""
-    #     updated_params = env_params.copy()
-        
-    #     # Update service area dimensions
-    #     if self.use_service_area and self.geo_bounds is not None:
-    #         updated_params["service_area_dimensions"] = (
-    #             self.geo_bounds["width_km"], 
-    #             self.geo_bounds["height_km"]
-    #         )
-        
-    #     # Update restaurant count
-    #     if self.use_restaurant_positions and self.restaurants_df is not None:
-    #         updated_params["num_restaurants"] = len(self.restaurants_df)
-        
-    #     # Update vehicle count - now controlled by separate parameter
-    #     if self.use_vehicle_count and self.vehicles_df is not None:
-    #         updated_params["num_vehicles"] = len(self.vehicles_df)
-        
-    #     return updated_params
-    
+        return vehicle_positions  
 
     def apply_to_env_params(self, env_params: dict) -> dict:
         """Apply configuration to environment parameters."""
@@ -332,7 +311,8 @@ class MeituanDataConfig:
                 mean_prep_time=env_params.get("mean_prep_time", 10.0),
                 prep_time_var=env_params.get("prep_time_var", 2.0),
                 mode="replay",
-                real_orders_df=self.orders_df
+                real_orders_df=self.orders_df,
+                use_real_deadlines=self.use_deadlines
             )
         else:
             raise ValueError(f"Unknown order generation mode: {self.order_generation_mode}")
@@ -365,7 +345,7 @@ class MeituanDataConfig:
             env.geo_to_sim_coords = self.geo_to_sim_coords
             logger.info("Applied geographic bounds to environment")
     
-            # Set up order generator based on mode
+        # Set up order generator based on mode
         if hasattr(self, 'order_generation_mode') and self.order_generation_mode == "replay":
             if hasattr(self, 'orders_df') and self.orders_df is not None:
                 # Create a copy for filtering to avoid modifying the original
@@ -440,7 +420,8 @@ class MeituanDataConfig:
                 order_generator = OrderGenerator(
                     **env_params,
                     mode="replay",
-                    real_orders_df=filtered_orders_df
+                    real_orders_df=filtered_orders_df,
+                    use_real_deadlines=self.use_deadlines
                 )
                 
                 # Set the generator in OrderManager

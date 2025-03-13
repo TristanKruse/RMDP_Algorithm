@@ -30,6 +30,9 @@ class Order:
     delivery_time: Optional[float] = None
     first_postpone_time: Optional[float] = None
     postpone_count: int = 0
+    expected_prep_time: float = None  # Expected preparation time when order created
+    actual_prep_time: float = None  # Actual preparation time based on when order was ready
+    driver_wait_time: float = 0.0  # How long driver waited for the order
 
 
 @dataclass

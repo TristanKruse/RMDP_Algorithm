@@ -51,9 +51,19 @@ class Handlers:
 
             # Check readiness of all orders
             all_orders_ready = True
+            # ----- KPI Tracking -----
+            waiting_orders = []
+            # ----- KPI Tracking -----
+
             for order_id in bundle_orders:
                 order = next((o for o in order_manager.active_orders if o.id == order_id), None)
                 if order:
+                    # ----- KPI Tracking -----
+                    # Track driver arrival time at restaurant for this order
+                    if not hasattr(order, 'driver_arrival_time'):
+                        order.driver_arrival_time = current_time
+                    # ----- KPI Tracking -----
+
                     if current_time < order.ready_time:
                         all_orders_ready = False
                         break
@@ -87,10 +97,36 @@ class Handlers:
                     if order:
                         order.status = "picked_up"
                         order.pickup_time = current_time
+
+                        # ----- KPI Tracking -----
+                        # Calculate times correctly
+                        true_prep_time = order.ready_time - order.request_time  # Actual meal preparation time
+                        order_wait_time = max(0, current_time - order.ready_time)  # Time order waited after being ready
+                        total_time_to_pickup = current_time - order.request_time  # Total time from order to pickup
+
+                        # Store these values
+                        order.true_prep_time = true_prep_time
+                        order.order_wait_time = order_wait_time
+                        order.total_time_to_pickup = total_time_to_pickup
+
+                        logger.info(f"Order {order_id} picked up: true prep time={true_prep_time:.1f} min, " +
+                                f"wait time after ready={order_wait_time:.1f} min, " +
+                                f"total time to pickup={total_time_to_pickup:.1f} min")
+                        # ----- KPI Tracking -----
+
                         logger.info(f"Marked order {order_id} as picked up")
                 
                 return new_loc, self.location_manager.get_travel_time(vehicle.current_location, new_loc), 0.0, False
             else:
+                # ----- KPI Tracking -----
+                # Store the waiting time information
+                for order_id in waiting_orders:
+                    order = next((o for o in order_manager.active_orders if o.id == order_id), None)
+                    if order:
+                        # Mark that the driver is waiting for this order
+                        order.driver_waiting = True
+                        logger.info(f"Driver waiting for order {order_id} - ready in {order.ready_time - current_time:.1f} min")
+                # ----- KPI Tracking -----
                 return new_loc, 0.0, 0.0, False
 
         # For delivery arrivals
@@ -132,6 +168,22 @@ class Handlers:
                 if order:
                     order.status = "picked_up"
                     order.pickup_time = current_time
+
+                    # ----- KPI Tracking -----
+                    # Calculate prep and wait times
+                    expected_prep_time = order.ready_time - order.request_time
+                    actual_prep_time = current_time - order.request_time
+                    
+                    # Calculate wait time if the driver arrived before food was ready
+                    driver_wait_time = 0.0
+                    if hasattr(order, 'driver_arrival_time'):
+                        driver_wait_time = max(0.0, order.ready_time - order.driver_arrival_time)
+                    
+                    # Store these values
+                    order.expected_prep_time = expected_prep_time
+                    order.actual_prep_time = actual_prep_time
+                    order.driver_wait_time = driver_wait_time
+                    # ----- KPI Tracking -----
             
             # Initialize delivery for first order
             first_order_id = min(bundle_orders)

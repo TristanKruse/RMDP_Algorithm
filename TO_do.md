@@ -1,8 +1,31 @@
-3. Timing Parameters (Feasible with Adjustments)
-Delivery windows: Adjust deadlines based on actual consumer expectations
 
-4. Vehicle Parameters (Challenging but Possible)
-Vehicle capacities: Adjust based on data.
+- number vehicles ggf. pro Stunde oder ähnlich, auf jeden Fall anders analysieren, ansonsten ist number of vehicles immer zu hoch.
+
+
+- Analyze vehicle speed from data -> time + distance.
+
+
+-Hier könnte man ggf. live positions rausfinden!!!!
+Assignment inputs: orders to be assigned and candidate couriers. At a dispatch time,
+orders to be assigned can be retrieved from Table 4 (File: dispatch waybill meituan.csv).
+Details of candidate couriers eligible for the orders, e.g., the couriers’ current geographical
+coordinates and the orders they are presently carrying, can be retrieved from Table
+5 (File: dispatch rider meituan.csv). Table 4 contains 15,921 rows in total; Table
+5 contains 62,044 rows in total.
+
+
+Notes:
+->assumed delivery window is between 10 and 120 minutes, otherwise use default gamma dist.  (see order generator)
+->vehicle capacities ...
+->ggf. vehicles langsamer machen
+->Limiting permutations, when bigger 4 (see route_utils), um es computationally thesable zu machen.
+
+->Aca hyperparameters relevant, v.a. auch, wie lange maximal postponed werden darf, bei 15 min. signifikant schlechtere Ergebnisse wie bei 10 min.
+->Wichtig auch, accuracy von mean prep time und deadline,
+
+
+
+
 
 
 -Debugen von ACA, warum Ergebnisse nicht klar besser, so wie bei Ulmer?
@@ -82,23 +105,6 @@ C++ could optimize with:
 Bitsets for state tracking
 More efficient data structures
 Better branching optimization
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 

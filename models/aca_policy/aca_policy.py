@@ -109,6 +109,20 @@ class ACA:
             - Route plan as dictionary mapping vehicle IDs to Routes
             - Set of orders chosen for postponement
         """
+        # Count unassigned orders
+        num_unassigned = len(state_dict['unassigned_orders'])
+        logger.info(f"============================================")
+        logger.info(f"TIMESTEP {state_dict['time']}: Processing {num_unassigned} unassigned orders")
+        
+        # Log vehicle statuses
+        vehicles_with_orders = 0
+        total_vehicles = len(state_dict["route_plan"])
+        for vehicle_id, route in state_dict["route_plan"].items():
+            if route.sequence:
+                vehicles_with_orders += 1
+        
+        logger.info(f"Vehicles with orders: {vehicles_with_orders}/{total_vehicles}")
+        
         # Initialize route plan by directly using the provided state
         route_plan = {}
         for vehicle_id, route in state_dict["route_plan"].items():
@@ -186,6 +200,7 @@ class ACA:
                 
                 if assignment is None:
                     # If no vehicle available, just continue (don't postpone)
+                    logging.info(f"FAILED TO  to assign order {order_id}")
                     continue
                 # Log successful assignment
                 logger.info(f"Assigned order {order_id} to vehicle {assignment.vehicle_id}")
