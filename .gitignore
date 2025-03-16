@@ -3,4 +3,9 @@ __pycache__/
 *.pyc
 *.pyo
 data/meituan_data/*
+data/simulation_results/*
+data/models/*
 .webui_secret_key
+speed_analysis_results/*
+presentation_visualizations/*
+

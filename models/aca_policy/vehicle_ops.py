@@ -59,7 +59,7 @@ class VehicleOperations:
 
     def find_vehicle(self, route_plan: dict, order_id: int, buffer: float, state: dict) -> Optional[VehicleAssignment]:
         """Find best vehicle for order insertion using cheapest insertion."""
-        logger.info(f"Finding vehicle for order {order_id}")
+        # logger.info(f"Finding vehicle for order {order_id}")
         best_assignment = None
         min_total_cost = float('inf')
         max_slack = -float('inf')  # Track best slack for tie-breaking
@@ -67,7 +67,7 @@ class VehicleOperations:
         # Get order info
         order_info = state["unassigned_orders"].get(order_id)
         if not order_info:
-            logger.info(f"  No info found for order {order_id}")
+            #logger.info(f"  No info found for order {order_id}")
             return None
 
         # Get locations
@@ -85,11 +85,11 @@ class VehicleOperations:
             active_orders = self._count_active_orders(route)
             if active_orders >= self.vehicle_capacity:
                 vehicles_at_capacity += 1
-                logger.info(f"  Vehicle {vehicle_id} at capacity: {active_orders}/{self.vehicle_capacity}")
+                # logger.info(f"  Vehicle {vehicle_id} at capacity: {active_orders}/{self.vehicle_capacity}")
                 continue
             
             # Log before evaluating
-            logger.info(f"  Evaluating vehicle {vehicle_id}: {active_orders}/{self.vehicle_capacity} orders")
+            #logger.info(f"  Evaluating vehicle {vehicle_id}: {active_orders}/{self.vehicle_capacity} orders")
             
             assignment = self._evaluate_vehicle_assignment(
                 vehicle_id, route, order_id,
@@ -98,7 +98,7 @@ class VehicleOperations:
             )
             
             if assignment:
-                logger.info(f"  Found assignment with delay: {assignment.delay}")
+                # logger.info(f"  Found assignment with delay: {assignment.delay}")
                 # Case 1: Better delay - always take it
                 if assignment.delay < min_total_cost:
                     min_total_cost = assignment.delay
@@ -111,7 +111,7 @@ class VehicleOperations:
                         total_time=0.0
                     )
                     max_slack = self.time_calculator._calculate_slack(state, {vehicle_id: test_route})
-                    logger.info(f"  New best assignment: Vehicle {vehicle_id} with delay {min_total_cost} and slack {max_slack}")
+                    # logger.info(f"  New best assignment: Vehicle {vehicle_id} with delay {min_total_cost} and slack {max_slack}")
                                             
                 # Case 2: Same delay - tie-breaking with slack
                 elif assignment.delay == min_total_cost:
@@ -123,23 +123,23 @@ class VehicleOperations:
                         total_time=0.0
                     )
                     current_slack = self.time_calculator._calculate_slack(state, {vehicle_id: test_route})
-                    logger.info(f"  Equal delay solution ({min_total_cost}). Current slack: {current_slack}, Best slack: {max_slack}")
+                    # logger.info(f"  Equal delay solution ({min_total_cost}). Current slack: {current_slack}, Best slack: {max_slack}")
                     
                     # If better slack, update best assignment
                     if current_slack > max_slack:
-                        logger.info(f"  Better slack found: {current_slack} > {max_slack}, updating best assignment")
+                        #logger.info(f"  Better slack found: {current_slack} > {max_slack}, updating best assignment")
                         max_slack = current_slack
                         best_assignment = assignment
             else:
                 vehicles_no_insertions += 1
-                logger.info(f"  No valid insertions found for vehicle {vehicle_id}")
+                # logger.info(f"  No valid insertions found for vehicle {vehicle_id}")
         
         # Log summary
-        logger.info(f"  Vehicles checked: {vehicles_checked}, at capacity: {vehicles_at_capacity}, no insertions: {vehicles_no_insertions}")
-        if best_assignment:
-            logger.info(f"  Selected vehicle {best_assignment.vehicle_id} with delay {min_total_cost} and slack {max_slack}")
-        else:
-            logger.info(f"  No suitable vehicle found for order {order_id}")
+        #logger.info(f"  Vehicles checked: {vehicles_checked}, at capacity: {vehicles_at_capacity}, no insertions: {vehicles_no_insertions}")
+        # if best_assignment:
+        #     logger.info(f"  Selected vehicle {best_assignment.vehicle_id} with delay {min_total_cost} and slack {max_slack}")
+        # else:
+        #     logger.info(f"  No suitable vehicle found for order {order_id}")
                 
         return best_assignment
 
@@ -295,18 +295,18 @@ class VehicleOperations:
         
         # For empty route, only one possibility: pickup at 0, delivery at 1.
         if not sequence:
-            logger.info("    Empty route: inserting at (0,1)")
+            # logger.info("    Empty route: inserting at (0,1)")
             return [(0, 1)]
         
         n = len(sequence)
         
         # Log sequence info
-        logger.info(f"    Sequence length: {n}, evaluating insertion positions...")
+        # logger.info(f"    Sequence length: {n}, evaluating insertion positions...")
         
         # Never insert before the first stop of an existing route
         # This prevents disrupting vehicles that are already moving
         start_pos = 1
-        logger.info(f"    Starting insertion from position {start_pos} (skipping position 0 for non-empty routes)")
+        # logger.info(f"    Starting insertion from position {start_pos} (skipping position 0 for non-empty routes)")
         
         insertions_checked = 0
         capacity_failures = 0
@@ -319,13 +319,13 @@ class VehicleOperations:
                 else:
                     capacity_failures += 1
         
-        logger.info(f"    Found {len(positions)} feasible positions out of {insertions_checked} checked. Capacity failures: {capacity_failures}")
+        # logger.info(f"    Found {len(positions)} feasible positions out of {insertions_checked} checked. Capacity failures: {capacity_failures}")
         
         # If no positions found, log more details
-        if not positions and sequence:
-            logger.info(f"    CRITICAL: No feasible insertion positions found for non-empty route!")
-            logger.info(f"    Route details: {sequence}")
-            logger.info(f"    Start position: {start_pos}, Sequence length: {n}")
+        # if not positions and sequence:
+        #     logger.info(f"    CRITICAL: No feasible insertion positions found for non-empty route!")
+        #     logger.info(f"    Route details: {sequence}")
+        #     logger.info(f"    Start position: {start_pos}, Sequence length: {n}")
             
         return positions
 

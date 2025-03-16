@@ -66,7 +66,7 @@ class MeituanDataConfig:
         if order_generation_mode == "replay":
             if os.path.exists(self.order_file):
                 self.orders_df = pd.read_csv(self.order_file)
-                print(f"PRINTING THE COLUMNS {self.orders_df.columns}")
+                # print(f"PRINTING THE COLUMNS {self.orders_df.columns}")
                 # Convert timestamp columns
                 timestamp_cols = ['platform_order_time', 'estimate_meal_prepare_time', 
                                  'order_push_time', 'dispatch_time', 'grab_time', 
@@ -74,8 +74,6 @@ class MeituanDataConfig:
                 for col in timestamp_cols:
                     if col in self.orders_df.columns:
                         self.orders_df[col] = pd.to_datetime(self.orders_df[col])
-                
-                logger.info(f"Loaded {len(self.orders_df)} orders for order generation")
             else:
                 raise FileNotFoundError(f"Order data file not found: {self.order_file}")
         
@@ -99,11 +97,9 @@ class MeituanDataConfig:
         """Load required data from files."""
         if self.use_restaurant_positions:
             self.restaurants_df = pd.read_csv(self.restaurant_file)
-            logger.info(f"Loaded {len(self.restaurants_df)} restaurants")
         
         if self.use_vehicle_count or self.use_vehicle_positions:
             self.vehicles_df = pd.read_csv(self.vehicle_file)
-            logger.info(f"Loaded {len(self.vehicles_df)} vehicles")
 
     def _calculate_geo_bounds(self) -> None:
         """Calculate geographic boundaries based on restaurant and customer positions."""
@@ -122,9 +118,7 @@ class MeituanDataConfig:
             max_lat = max(max_lat, self.orders_df['recipient_lat'].max())
             min_lng = min(min_lng, self.orders_df['recipient_lng'].min())
             max_lng = max(max_lng, self.orders_df['recipient_lng'].max())
-            
-            logger.info("Including customer locations in boundary calculation")
-        
+                    
         # Add a buffer around the service area (15% instead of 10%)
         lat_range = max_lat - min_lat
         lng_range = max_lng - min_lng
@@ -150,9 +144,6 @@ class MeituanDataConfig:
             "width_km": lng_km,
             "height_km": lat_km
         }
-        
-        logger.info(f"Calculated service area: {lng_km:.2f} km × {lat_km:.2f} km")
-        logger.info(f"Geographic bounds: lat [{min_lat:.6f}, {max_lat:.6f}], lng [{min_lng:.6f}, {max_lng:.6f}]")
 
 
     def get_service_area_dimensions(self) -> Optional[Tuple[float, float]]:
@@ -268,7 +259,6 @@ class MeituanDataConfig:
         if self.order_generation_mode == "replay" and self.simulation_duration_hours is not None:
             # Convert hours to minutes for simulation duration
             updated_params["simulation_duration"] = self.simulation_duration_hours * 60
-            logger.info(f"Overriding simulation duration to {self.simulation_duration_hours} hours ({updated_params['simulation_duration']} minutes)")
             
             # Adjust cooldown duration if necessary to ensure it doesn't exceed simulation duration
             cooldown_ratio = 0.1  # Make cooldown 10% of total simulation
@@ -324,7 +314,6 @@ class MeituanDataConfig:
             restaurant_nodes = self.create_restaurant_nodes()
             if restaurant_nodes:
                 env.location_manager.restaurants = restaurant_nodes
-                logger.info(f"Applied {len(restaurant_nodes)} restaurant positions to environment")
         
         # Apply vehicle positions - only if use_vehicle_positions is True
         if self.use_vehicle_positions:
@@ -337,13 +326,11 @@ class MeituanDataConfig:
                         # Only set initial location
                         env.vehicle_manager.vehicles[i].initial_location = position
                         position_count += 1
-                logger.info(f"Applied initial positions for {position_count} vehicles")
         
         # Store geo bounds and coordinate conversion in environment
         if self.use_service_area and self.geo_bounds is not None:
             env.geo_bounds = self.geo_bounds
             env.geo_to_sim_coords = self.geo_to_sim_coords
-            logger.info("Applied geographic bounds to environment")
     
         # Set up order generator based on mode
         if hasattr(self, 'order_generation_mode') and self.order_generation_mode == "replay":
@@ -353,58 +340,31 @@ class MeituanDataConfig:
                                 
                 # Apply time window filtering if specified
                 if self.simulation_start_hour is not None:
-                    # Find the date of the first order
-                    logger.info(f"Original order_push_time type: {type(filtered_orders_df['order_push_time'].iloc[0])}")
-                    logger.info(f"Original order_push_time sample: {filtered_orders_df['order_push_time'].iloc[0]}")
-                    
                     try:
                         # Ensure order_push_time is a datetime type
                         if not pd.api.types.is_datetime64_any_dtype(filtered_orders_df['order_push_time']):
-                            logger.info("Converting order_push_time to datetime")
                             filtered_orders_df['order_push_time'] = pd.to_datetime(filtered_orders_df['order_push_time'])
                         
-                        first_date = filtered_orders_df['order_push_time'].dt.date.min()
-                        logger.info(f"First date found: {first_date}")
-                        
+                        first_date = filtered_orders_df['order_push_time'].dt.date.min()                        
                         # Create start timestamp for filtering
-                        start_time = pd.Timestamp(first_date) + pd.Timedelta(hours=self.simulation_start_hour)
-                        logger.info(f"Filtering orders to start at {start_time} (hour {self.simulation_start_hour})")
-                        
+                        start_time = pd.Timestamp(first_date) + pd.Timedelta(hours=self.simulation_start_hour)                        
                         # Create end timestamp if duration is specified
                         if self.simulation_duration_hours is not None:
                             end_time = start_time + pd.Timedelta(hours=self.simulation_duration_hours)
-                            logger.info(f"End time for orders: {end_time}")
                         else:
                             end_time = pd.Timestamp.max
-                        
-                        # Filter orders to time window
-                        before_count = len(filtered_orders_df)
-                        logger.info(f"Time range in data: {filtered_orders_df['order_push_time'].min()} to {filtered_orders_df['order_push_time'].max()}")
-                        
-                        # Print sample timestamps to verify formatting
-                        logger.info(f"Sample timestamps to check format:")
-                        for i in range(min(5, len(filtered_orders_df))):
-                            logger.info(f"  Order {i}: {filtered_orders_df['order_push_time'].iloc[i]}")
                         
                         filtered_orders_df = filtered_orders_df[
                             (filtered_orders_df['order_push_time'] >= start_time) &
                             (filtered_orders_df['order_push_time'] <= end_time)
                         ]
-                        after_count = len(filtered_orders_df)
-                        
-                        logger.info(f"Filtered from {before_count} to {after_count} orders in time window")
-                        
-                        if after_count > 0:
-                            logger.info(f"Filtered time range: {filtered_orders_df['order_push_time'].min()} to {filtered_orders_df['order_push_time'].max()}")
                         
                         # If no orders in time window, warning and fallback
-                        if after_count == 0:
-                            logger.warning("No orders in specified time window! Using all orders instead.")
+                        if len(filtered_orders_df) == 0:
                             filtered_orders_df = self.orders_df.copy()
                     except Exception as e:
-                        logger.error(f"Error during time filtering: {str(e)}")
+                        logger.warning(f"Error filtering orders by time window: {e}")
                         # Fall back to using all orders
-                        logger.warning("Falling back to using all orders due to filtering error")
                         filtered_orders_df = self.orders_df.copy()
                 
                 # Create order generator with filtered data
@@ -426,4 +386,3 @@ class MeituanDataConfig:
                 
                 # Set the generator in OrderManager
                 env.order_manager.set_order_generator(order_generator)
-                logger.info(f"Set up order generator with replay mode using {len(filtered_orders_df)} orders")

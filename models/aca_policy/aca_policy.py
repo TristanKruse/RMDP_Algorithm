@@ -5,6 +5,7 @@ from datatypes import Route
 from .route_utils import RouteUtils
 from .vehicle_ops import VehicleOperations
 from .postponement import PostponementHandler
+from .rl_postponement import RLPostponementDecision
 from .time_utils import TimeCalculator
 import logging
 
@@ -44,6 +45,11 @@ class ACA:
         service_time: float = 2.0,
         mean_prep_time: float = 10.0,
         delivery_window: float = 40.0,
+        # RL parameters
+        postponement_method: str = "heuristic",  # "heuristic" or "rl"
+        rl_training_mode: bool = True,
+        rl_state_size: int = 10,
+        rl_model_path: str = None,
     ):
         self.buffer = buffer
         self.max_postponements = max_postponements
@@ -61,11 +67,11 @@ class ACA:
             location_manager=location_manager
         )
 
-        # Initialize component handlers with relevant parameters
-        self.postponement = PostponementHandler(
-            max_postponements=max_postponements,
-            max_postpone_time=max_postpone_time,
-        )
+        # # Initialize component handlers with relevant parameters
+        # self.postponement = PostponementHandler(
+        #     max_postponements=max_postponements,
+        #     max_postpone_time=max_postpone_time,
+        # )
 
         self.vehicle_ops = VehicleOperations(
             service_time=service_time,
@@ -74,6 +80,29 @@ class ACA:
             location_manager=location_manager,
             delivery_window=delivery_window,
         )
+
+        # Initialize postponement handler based on selected method
+        if postponement_method == "heuristic":
+            self.postponement = PostponementHandler(
+                max_postponements=max_postponements,
+                max_postpone_time=max_postpone_time,
+            )
+            logger.info("Using heuristic-based postponement method")
+        else:  # "rl"
+            self.postponement = RLPostponementDecision(
+                max_postponements=max_postponements,
+                max_postpone_time=max_postpone_time,
+                training_mode=rl_training_mode,
+                state_size=rl_state_size,
+            )
+            # Load pre-trained model if path is provided
+            if rl_model_path and not rl_training_mode:
+                self.postponement.load_model(rl_model_path)
+            logger.info("Using RL-based postponement method")
+            
+        # For storing metrics between steps
+        self.previous_delay = 0.0
+        self.reward_tracking = {}  # order_id -> reward
     
     def solve(self, state_dict: dict) -> Tuple[Dict[int, Route], Set[int]]:
         """ACA Algorithm to solve the RMDP.
@@ -111,8 +140,8 @@ class ACA:
         """
         # Count unassigned orders
         num_unassigned = len(state_dict['unassigned_orders'])
-        logger.info(f"============================================")
-        logger.info(f"TIMESTEP {state_dict['time']}: Processing {num_unassigned} unassigned orders")
+        # logger.info(f"============================================")
+        # logger.info(f"TIMESTEP {state_dict['time']}: Processing {num_unassigned} unassigned orders")
         
         # Log vehicle statuses
         vehicles_with_orders = 0
@@ -121,7 +150,7 @@ class ACA:
             if route.sequence:
                 vehicles_with_orders += 1
         
-        logger.info(f"Vehicles with orders: {vehicles_with_orders}/{total_vehicles}")
+        # logger.info(f"Vehicles with orders: {vehicles_with_orders}/{total_vehicles}")
         
         # Initialize route plan by directly using the provided state
         route_plan = {}
@@ -134,8 +163,8 @@ class ACA:
                 total_time=0.0
             )
 
-        print(f"Starting solve with {len(state_dict['unassigned_orders'])} unassigned orders")
-        print(f"Starting solve with {route_plan} unassigned orders")
+        # print(f"Starting solve with {len(state_dict['unassigned_orders'])} unassigned orders")
+        # print(f"Starting solve with {route_plan} unassigned orders")
 
         # Handle empty state or no unassigned orders (Step 1: Initialization)
         if not state_dict["unassigned_orders"]:
@@ -163,7 +192,9 @@ class ACA:
         assignments_made = 0
         assignments_failed = 0
         
-
+        # Store current total delay for reward calculation
+        current_delay = self.time_calculator.calculate_costs(state_dict, route_plan, buffer=self.buffer)
+        
         # Steps 8-10: Process each sequence
         for sequence in order_sequences:
             # Initialize candidate solution
@@ -171,7 +202,7 @@ class ACA:
             candidate_postponed = set()  # 9. ̂P ← ∅
 
             # Log sequence being processed
-            logger.info(f"Processing sequence with {len(sequence)} orders")
+            # logger.info(f"Processing sequence with {len(sequence)} orders")
         
 
             # 10. Process each order in sequence (forall D ∈ ̂$)
@@ -191,7 +222,7 @@ class ACA:
                     continue
 
                 # Log before assignment attempt
-                logger.info(f"Attempting to assign order {order_id}")
+                # logger.info(f"Attempting to assign order {order_id}")
                     
                 # 12. Find best vehicle assignment
                 assignment = self.vehicle_ops.find_vehicle(
@@ -200,10 +231,10 @@ class ACA:
                 
                 if assignment is None:
                     # If no vehicle available, just continue (don't postpone)
-                    logging.info(f"FAILED TO  to assign order {order_id}")
+                    # logging.info(f"FAILED TO  to assign order {order_id}")
                     continue
                 # Log successful assignment
-                logger.info(f"Assigned order {order_id} to vehicle {assignment.vehicle_id}")
+                # logger.info(f"Assigned order {order_id} to vehicle {assignment.vehicle_id}")
                 assignments_made += 1
                 
                 # 13. Update route for assigned vehicle
@@ -218,7 +249,7 @@ class ACA:
             current_delay = self.time_calculator.calculate_costs(state_dict, candidate_route, buffer=self.buffer)
             current_slack = self.time_calculator._calculate_slack(state_dict, candidate_route)
 
-            logger.info(f"Sequence evaluation: delay {current_delay}, slack {current_slack}")
+            # logger.info(f"Sequence evaluation: delay {current_delay}, slack {current_slack}")
 
             # 18., 19. Update best solution if better
             if current_delay < best_delay or (current_delay == best_delay and current_slack > best_slack):
@@ -227,7 +258,7 @@ class ACA:
                 best_slack = current_slack
                 best_postponed = candidate_postponed.copy()
 
-        print(f"Solver postponing {len(best_postponed)} orders")
+        # print(f"Solver postponing {len(best_postponed)} orders")
 
         # 26. Remove postponed orders from final routes
         final_routes = {}
@@ -251,23 +282,37 @@ class ACA:
             )
 
         # Log final route assignments
-        logger.info(f"Final route assignments:")
-        for vehicle_id, route in final_routes.items():
-            if route.sequence:
-                pickup_counts = sum(len(p) for _, p, _ in route.sequence)
-                delivery_counts = sum(len(d) for _, _, d in route.sequence)
-                logger.info(f"Vehicle {vehicle_id}: {pickup_counts} pickups, {delivery_counts} deliveries")
-                for stop_idx, (node_id, pickups, deliveries) in enumerate(route.sequence):
-                    if pickups:
-                        logger.info(f"  Stop {stop_idx}: Node {node_id}, Pickup orders {pickups}")
-                    if deliveries:
-                        logger.info(f"  Stop {stop_idx}: Node {node_id}, Deliver orders {deliveries}")
-        logger.info(f"Postponed orders: {best_postponed}")
+        # logger.info(f"Final route assignments:")
+        # for vehicle_id, route in final_routes.items():
+        #     if route.sequence:
+        #         pickup_counts = sum(len(p) for _, p, _ in route.sequence)
+        #         delivery_counts = sum(len(d) for _, _, d in route.sequence)
+        #         # logger.info(f"Vehicle {vehicle_id}: {pickup_counts} pickups, {delivery_counts} deliveries")
+        #         for stop_idx, (node_id, pickups, deliveries) in enumerate(route.sequence):
+        #             if pickups:
+        #                 logger.info(f"  Stop {stop_idx}: Node {node_id}, Pickup orders {pickups}")
+        #             if deliveries:
+        #                 logger.info(f"  Stop {stop_idx}: Node {node_id}, Deliver orders {deliveries}")
+        # logger.info(f"Postponed orders: {best_postponed}")
 
         # Final logging
-        logger.info(f"Total assignments made: {assignments_made}, failed: {assignments_failed}")
-        logger.info(f"Final route plan has {sum(len(route.sequence) for route in final_routes.values())} stops")
+        # logger.info(f"Total assignments made: {assignments_made}, failed: {assignments_failed}")
+        # logger.info(f"Final route plan has {sum(len(route.sequence) for route in final_routes.values())} stops")
         
         return final_routes, best_postponed
 
-
+    def save_rl_model(self, path: str) -> None:
+        """Save the RL model to the specified path."""
+        if hasattr(self, 'postponement') and hasattr(self.postponement, 'save_model'):
+            self.postponement.save_model(path)
+            logger.info(f"RL model saved to {path}")
+            return True
+        return False
+    
+    def load_rl_model(self, path: str) -> None:
+        """Load the RL model from the specified path."""
+        if hasattr(self, 'postponement') and hasattr(self.postponement, 'load_model'):
+            self.postponement.load_model(path)
+            logger.info(f"RL model loaded from {path}")
+            return True
+        return False

@@ -31,7 +31,7 @@ class RouteUtils:
             order_items = list(order_items.items())
             
         # Log the original number of orders
-        logger.info(f"Generating sequences for {len(order_items)} orders")
+        # logger.info(f"Generating sequences for {len(order_items)} orders")
         
         # If we have more than 4 orders, limit permutations
         if len(order_items) > 4:
@@ -40,12 +40,12 @@ class RouteUtils:
             sorted_orders = sorted(order_items, 
                                   key=lambda x: x[1].get("request_time", 0))
             
-            logger.info(f"Limited to 1 sequence (orders sorted by request time)")
+            # logger.info(f"Limited to 1 sequence (orders sorted by request time)")
             return [sorted_orders]  # Just use the sorted sequence
         else:
             # For small sets, generate all permutations as before
             sequences = list(permutations(order_items))
-            logger.info(f"Generated {len(sequences)} permutations")
+            # logger.info(f"Generated {len(sequences)} permutations")
             return sequences
 
     def _count_route_load(self, route: Route) -> int:

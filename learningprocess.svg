@@ -1,0 +1,618 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   viewBox="0 0 800 600"
+   version="1.1"
+   id="svg39"
+   sodipodi:docname="learningprocess.svg"
+   inkscape:version="1.4 (86a8ad7, 2024-10-11)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <defs
+     id="defs39" />
+  <sodipodi:namedview
+     id="namedview39"
+     pagecolor="#ffffff"
+     bordercolor="#000000"
+     borderopacity="0.25"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     inkscape:zoom="2.0216667"
+     inkscape:cx="399.91756"
+     inkscape:cy="300"
+     inkscape:window-width="2400"
+     inkscape:window-height="1494"
+     inkscape:window-x="-11"
+     inkscape:window-y="-11"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="svg39" />
+  <!-- Background -->
+  <rect
+     width="800"
+     height="600"
+     fill="#f8f9fa"
+     id="rect1"
+     x="0"
+     y="-600"
+     transform="scale(1,-1)" />
+  <path
+     d="M 31.065952,77.22327 H 48.69991"
+     fill="none"
+     stroke="#000000"
+     stroke-width="1.53336"
+     stroke-dasharray="5, 5"
+     id="path37-4" />
+  <path
+     d="M 787.24059,402.6002 V 96.703204 h -33.16824"
+     fill="none"
+     stroke="#000000"
+     stroke-width="2.37417"
+     stroke-dasharray="5, 5"
+     id="path39-0" />
+  <!-- Title -->
+  <text
+     x="400"
+     y="30"
+     font-family="Arial"
+     font-size="20"
+     text-anchor="middle"
+     font-weight="bold"
+     id="text1">RL Postponement Learning Timeline</text>
+  <!-- Training Process Box -->
+  <rect
+     x="50"
+     y="50"
+     width="700"
+     height="90"
+     rx="10"
+     ry="10"
+     fill="#e1f5fe"
+     stroke="#03a9f4"
+     stroke-width="2"
+     id="rect2" />
+  <text
+     x="400"
+     y="120"
+     font-family="Arial"
+     font-size="14"
+     text-anchor="middle"
+     font-weight="bold"
+     id="text2">Training Over Multiple Episodes</text>
+  <!-- Exploration Rate Indicator - Moved to top of box -->
+  <text
+     x="100"
+     y="80"
+     font-family="Arial"
+     font-size="12"
+     text-anchor="start"
+     id="text3">Exploration Rate (ε):</text>
+  <rect
+     x="240.49464"
+     y="61.117889"
+     width="400"
+     height="10"
+     rx="5"
+     ry="5"
+     fill="#e1f5fe"
+     stroke="#03a9f4"
+     stroke-width="1"
+     id="rect3" />
+  <rect
+     x="240"
+     y="60.623249"
+     width="360"
+     height="10"
+     rx="5"
+     ry="5"
+     fill="#03a9f4"
+     stroke="none"
+     id="rect4" />
+  <text
+     x="245.9357"
+     y="86.537514"
+     font-family="Arial"
+     font-size="10px"
+     text-anchor="start"
+     id="text4">0.30</text>
+  <text
+     x="420.70898"
+     y="88.021431"
+     font-family="Arial"
+     font-size="10px"
+     text-anchor="middle"
+     id="text5">Gradually Decreasing</text>
+  <text
+     x="633.07501"
+     y="88.021431"
+     font-family="Arial"
+     font-size="10px"
+     text-anchor="end"
+     id="text6">0.05</text>
+  <!-- Timeline Bar -->
+  <rect
+     x="90"
+     y="150"
+     width="620"
+     height="8"
+     fill="#b3e5fc"
+     stroke="#03a9f4"
+     stroke-width="1"
+     id="rect6" />
+  <!-- Multiple Episodes -->
+  <circle
+     cx="150"
+     cy="154"
+     r="8"
+     fill="#0288d1"
+     id="circle6" />
+  <text
+     x="150"
+     y="175"
+     font-family="Arial"
+     font-size="12"
+     text-anchor="middle"
+     id="text7">Episode 1</text>
+  <circle
+     cx="250"
+     cy="154"
+     r="8"
+     fill="#0288d1"
+     id="circle7" />
+  <text
+     x="250"
+     y="175"
+     font-family="Arial"
+     font-size="12"
+     text-anchor="middle"
+     id="text8">Episode 2</text>
+  <circle
+     cx="350"
+     cy="154"
+     r="8"
+     fill="#0288d1"
+     id="circle8" />
+  <text
+     x="350"
+     y="175"
+     font-family="Arial"
+     font-size="12"
+     text-anchor="middle"
+     id="text9">Episode 3</text>
+  <text
+     x="450"
+     y="154"
+     font-family="Arial"
+     font-size="14"
+     text-anchor="middle"
+     id="text10">...</text>
+  <circle
+     cx="550"
+     cy="154"
+     r="8"
+     fill="#0288d1"
+     id="circle10" />
+  <text
+     x="550"
+     y="175"
+     font-family="Arial"
+     font-size="12"
+     text-anchor="middle"
+     id="text11">Episode N-1</text>
+  <circle
+     cx="650"
+     cy="154"
+     r="8"
+     fill="#0288d1"
+     id="circle11" />
+  <text
+     x="650"
+     y="175"
+     font-family="Arial"
+     font-size="12"
+     text-anchor="middle"
+     id="text12">Episode N</text>
+  <!-- Single Episode Box -->
+  <rect
+     x="50"
+     y="195"
+     width="700"
+     height="385"
+     rx="10"
+     ry="10"
+     fill="#e8f5e9"
+     stroke="#4caf50"
+     stroke-width="2"
+     id="rect12" />
+  <text
+     x="400"
+     y="220"
+     font-family="Arial"
+     font-size="16"
+     text-anchor="middle"
+     font-weight="bold"
+     id="text13">Single Episode Structure</text>
+  <!-- 1. Order Decision Points -->
+  <rect
+     x="75"
+     y="240"
+     width="650"
+     height="100"
+     rx="5"
+     ry="5"
+     fill="#c8e6c9"
+     stroke="#81c784"
+     stroke-width="1"
+     id="rect13" />
+  <text
+     x="400"
+     y="260"
+     font-family="Arial"
+     font-size="14"
+     text-anchor="middle"
+     font-weight="bold"
+     id="text14">1. Multiple Order Decision Points</text>
+  <!-- Order 1 -->
+  <rect
+     x="100"
+     y="280"
+     width="100"
+     height="50"
+     rx="3"
+     ry="3"
+     fill="#a5d6a7"
+     stroke="#66bb6a"
+     stroke-width="1"
+     id="rect14" />
+  <text
+     x="150"
+     y="303"
+     font-family="Arial"
+     font-size="12"
+     text-anchor="middle"
+     id="text15">Order 1 Decision</text>
+  <text
+     x="150"
+     y="320"
+     font-family="Arial"
+     font-size="10"
+     text-anchor="middle"
+     id="text16">Postpone? [Yes/No]</text>
+  <!-- Order 2 -->
+  <rect
+     x="250"
+     y="280"
+     width="100"
+     height="50"
+     rx="3"
+     ry="3"
+     fill="#a5d6a7"
+     stroke="#66bb6a"
+     stroke-width="1"
+     id="rect16" />
+  <text
+     x="300"
+     y="303"
+     font-family="Arial"
+     font-size="12"
+     text-anchor="middle"
+     id="text17">Order 2 Decision</text>
+  <text
+     x="300"
+     y="320"
+     font-family="Arial"
+     font-size="10"
+     text-anchor="middle"
+     id="text18">Postpone? [Yes/No]</text>
+  <!-- Order 3 -->
+  <rect
+     x="400"
+     y="280"
+     width="100"
+     height="50"
+     rx="3"
+     ry="3"
+     fill="#a5d6a7"
+     stroke="#66bb6a"
+     stroke-width="1"
+     id="rect18" />
+  <text
+     x="450"
+     y="303"
+     font-family="Arial"
+     font-size="12"
+     text-anchor="middle"
+     id="text19">Order 3 Decision</text>
+  <text
+     x="450"
+     y="320"
+     font-family="Arial"
+     font-size="10"
+     text-anchor="middle"
+     id="text20">Postpone? [Yes/No]</text>
+  <!-- Order N -->
+  <rect
+     x="550"
+     y="280"
+     width="100"
+     height="50"
+     rx="3"
+     ry="3"
+     fill="#a5d6a7"
+     stroke="#66bb6a"
+     stroke-width="1"
+     id="rect20" />
+  <text
+     x="600"
+     y="303"
+     font-family="Arial"
+     font-size="12"
+     text-anchor="middle"
+     id="text21">Order N Decision</text>
+  <text
+     x="600"
+     y="320"
+     font-family="Arial"
+     font-size="10"
+     text-anchor="middle"
+     id="text22">Postpone? [Yes/No]</text>
+  <!-- 2. Tracking Decisions -->
+  <rect
+     x="75"
+     y="350"
+     width="650"
+     height="70"
+     rx="5"
+     ry="5"
+     fill="#c8e6c9"
+     stroke="#81c784"
+     stroke-width="1"
+     id="rect22" />
+  <text
+     x="400"
+     y="370"
+     font-family="Arial"
+     font-size="14"
+     text-anchor="middle"
+     font-weight="bold"
+     id="text23">2. Track Decisions for Each Order</text>
+  <rect
+     x="100"
+     y="385"
+     width="600"
+     height="25"
+     rx="3"
+     ry="3"
+     fill="#a5d6a7"
+     stroke="#66bb6a"
+     stroke-width="1"
+     id="rect23" />
+  <text
+     x="400"
+     y="402"
+     font-family="Arial"
+     font-size="12"
+     text-anchor="middle"
+     id="text24">Store State Features + Actions in Memory</text>
+  <!-- 3. Compute Rewards -->
+  <rect
+     x="75"
+     y="430"
+     width="650"
+     height="70"
+     rx="5"
+     ry="5"
+     fill="#c8e6c9"
+     stroke="#81c784"
+     stroke-width="1"
+     id="rect24" />
+  <text
+     x="400"
+     y="450"
+     font-family="Arial"
+     font-size="14"
+     text-anchor="middle"
+     font-weight="bold"
+     id="text25">3. Compute Rewards After Episode Completes</text>
+  <rect
+     x="100"
+     y="465"
+     width="280"
+     height="25"
+     rx="3"
+     ry="3"
+     fill="#a5d6a7"
+     stroke="#66bb6a"
+     stroke-width="1"
+     id="rect25" />
+  <text
+     x="240"
+     y="482"
+     font-family="Arial"
+     font-size="12"
+     text-anchor="middle"
+     id="text26">Calculate Delays for Each Order</text>
+  <rect
+     x="420"
+     y="465"
+     width="280"
+     height="25"
+     rx="3"
+     ry="3"
+     fill="#a5d6a7"
+     stroke="#66bb6a"
+     stroke-width="1"
+     id="rect26" />
+  <text
+     x="560"
+     y="482"
+     font-family="Arial"
+     font-size="12"
+     text-anchor="middle"
+     id="text27">Convert Delays to Order-Specific Rewards</text>
+  <!-- 4. Model Learning -->
+  <rect
+     x="75"
+     y="510"
+     width="650"
+     height="60"
+     rx="5"
+     ry="5"
+     fill="#c8e6c9"
+     stroke="#81c784"
+     stroke-width="1"
+     id="rect27" />
+  <text
+     x="400"
+     y="530"
+     font-family="Arial"
+     font-size="14"
+     text-anchor="middle"
+     font-weight="bold"
+     id="text28">4. Update Neural Network from Episode Experiences</text>
+  <!-- Moved the boxes down to avoid overlapping with the title -->
+  <rect
+     x="100"
+     y="545"
+     width="180"
+     height="25"
+     rx="3"
+     ry="3"
+     fill="#a5d6a7"
+     stroke="#66bb6a"
+     stroke-width="1"
+     id="rect28" />
+  <text
+     x="190"
+     y="562"
+     font-family="Arial"
+     font-size="12"
+     text-anchor="middle"
+     id="text29">Add to Replay Buffer</text>
+  <rect
+     x="320"
+     y="545"
+     width="180"
+     height="25"
+     rx="3"
+     ry="3"
+     fill="#a5d6a7"
+     stroke="#66bb6a"
+     stroke-width="1"
+     id="rect29" />
+  <text
+     x="410"
+     y="562"
+     font-family="Arial"
+     font-size="12"
+     text-anchor="middle"
+     id="text30">Sample Random Batch</text>
+  <rect
+     x="540"
+     y="545"
+     width="180"
+     height="25"
+     rx="3"
+     ry="3"
+     fill="#a5d6a7"
+     stroke="#66bb6a"
+     stroke-width="1"
+     id="rect30" />
+  <text
+     x="630"
+     y="562"
+     font-family="Arial"
+     font-size="12"
+     text-anchor="middle"
+     id="text31">Update Network Weights</text>
+  <!-- Flow Arrows Between Steps -->
+  <!-- From Order Decision to Tracking -->
+  <path
+     d="M150 330 L150 350"
+     fill="none"
+     stroke="#000000"
+     stroke-width="1.5"
+     id="path31" />
+  <path
+     d="M300 330 L300 360"
+     fill="none"
+     stroke="#000000"
+     stroke-width="1.5"
+     id="path32" />
+  <path
+     d="M450 330 L450 360"
+     fill="none"
+     stroke="#000000"
+     stroke-width="1.5"
+     id="path33" />
+  <path
+     d="M600 330 L600 360"
+     fill="none"
+     stroke="#000000"
+     stroke-width="1.5"
+     id="path34" />
+  <!-- From Tracking to Rewards -->
+  <path
+     d="M400 410 L400 430"
+     fill="none"
+     stroke="#000000"
+     stroke-width="1.5"
+     id="path35" />
+  <polygon
+     points="395,425 400,435 405,425"
+     fill="#000000"
+     id="polygon35" />
+  <!-- From Rewards to Model Learning -->
+  <path
+     d="M400 490 L400 510"
+     fill="none"
+     stroke="#000000"
+     stroke-width="1.5"
+     id="path36" />
+  <polygon
+     points="395,505 400,515 405,505"
+     fill="#000000"
+     id="polygon36" />
+  <!-- 5. Start Next Episode - FIXED: now goes around the box instead of through it -->
+  <!-- Right side vertical line -->
+  <path
+     d="m 727.91426,399.50536 h 57.69991"
+     fill="none"
+     stroke="#000000"
+     stroke-width="2.77368"
+     stroke-dasharray="5, 5"
+     id="path37" />
+  <!-- Top horizontal line - now at the top of the box instead of through it -->
+  <!-- Left side vertical line -->
+  <path
+     d="M 31.499073,78.282107 V 399.9428 h 35.081968"
+     fill="none"
+     stroke="#000000"
+     stroke-width="2.50383"
+     stroke-dasharray="5, 5"
+     id="path39" />
+  <polygon
+     points="55,400 45,405 45,395 "
+     fill="#000000"
+     id="polygon39"
+     transform="translate(20.280297,0.49464138)" />
+  <text
+     x="295.01236"
+     y="-764.11792"
+     font-family="Arial"
+     font-size="14px"
+     text-anchor="middle"
+     transform="rotate(90)"
+     fill="#0288d1"
+     font-weight="bold"
+     id="text39"><tspan
+       style="fill:#000000"
+       id="tspan39">5. Next Episode</tspan></text>
+  <polygon
+     points="45,405 45,395 55,400 "
+     fill="#000000"
+     id="polygon39-9"
+     transform="matrix(-0.99938461,0.03507722,0.03507722,0.99938461,790.01785,-304.81497)" />
+</svg>

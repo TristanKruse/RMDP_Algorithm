@@ -104,18 +104,18 @@ class RouteProcessor:
                         metrics["late_orders"].add(current_order)
                     
                     if completed:
-                        logger.info(f"Completed delivery for order {current_order}")
+                        # logger.info(f"Completed delivery for order {current_order}")
                         metrics["deliveries"] += 1
                         metrics["delivered_orders"].add(current_order)
                         
                         # Update route plan for remaining deliveries
                         remaining_orders = bundle_orders - {current_order}
                         if remaining_orders:
-                            logger.info(f"Updating route for remaining orders: {remaining_orders}")
+                            # logger.info(f"Updating route for remaining orders: {remaining_orders}")
                             new_sequence = [(node_id, set(), remaining_orders)]
                             route_plan[vehicle_id].sequence = new_sequence
                         else:
-                            logger.info("No more deliveries in bundle, clearing route")
+                            # logger.info("No more deliveries in bundle, clearing route")
                             route_plan[vehicle_id].sequence = []
 
             else:
@@ -156,8 +156,8 @@ class RouteProcessor:
                             metrics["deliveries"] += 1
                             metrics["delivered_orders"].add(order_id)
                             route_plan[vehicle_id].sequence = current_route[1:]
-                    else:
-                        logger.info(f"Order {order_id} not found or not picked up")
+                    #else:
+                        # logger.info(f"Order {order_id} not found or not picked up")
 
             # Update vehicle location
             vehicle.current_location = new_loc
@@ -186,7 +186,7 @@ class RouteProcessor:
             for order_id in pickup_orders
         }
         if not all(bundle_orders.values()):
-            logger.info("Not all orders in bundle found")
+            # logger.info("Not all orders in bundle found")
             return current_loc, step_distance, delay, completed
 
         # Validate route plan
@@ -255,10 +255,10 @@ class RouteProcessor:
 
     def _execute_idle_movement(self, vehicle, metrics):
         """Process movement for idle vehicles with destinations."""
-        logger.info(f"Executing idle movement for vehicle {vehicle.id}")
-        logger.info(f"From: {vehicle.current_location}")
-        logger.info(f"To: {vehicle.current_destination}")
-        logger.info(f"Progress: {vehicle.movement_progress}")
+        # logger.info(f"Executing idle movement for vehicle {vehicle.id}")
+        # logger.info(f"From: {vehicle.current_location}")
+        # logger.info(f"To: {vehicle.current_destination}")
+        # logger.info(f"Progress: {vehicle.movement_progress}")
         # 1. Early return if no destination
         if not vehicle.current_destination:
             return

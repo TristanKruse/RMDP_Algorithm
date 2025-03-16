@@ -1,0 +1,59 @@
+[
+    {
+        "name": "Simple Environment",
+        "env_config": {
+            "num_vehicles": 2,
+            "num_restaurants": 10,
+            "service_area_dimensions": [
+                3.0,
+                3.0
+            ],
+            "mean_interarrival_time": 4.0
+        },
+        "performance_criteria": {
+            "min_on_time_rate": 80.0,
+            "max_avg_delay": 5.0,
+            "min_avg_reward": -10.0
+        },
+        "min_episodes": 20,
+        "max_episodes": 50
+    },
+    {
+        "name": "Intermediate Environment",
+        "env_config": {
+            "num_vehicles": 5,
+            "num_restaurants": 30,
+            "service_area_dimensions": [
+                5.0,
+                5.0
+            ],
+            "mean_interarrival_time": 2.0
+        },
+        "performance_criteria": {
+            "min_on_time_rate": 75.0,
+            "max_avg_delay": 8.0,
+            "min_avg_reward": -15.0
+        },
+        "min_episodes": 30,
+        "max_episodes": 70
+    },
+    {
+        "name": "Full Environment",
+        "env_config": {
+            "num_vehicles": 15,
+            "num_restaurants": 110,
+            "service_area_dimensions": [
+                10.0,
+                10.0
+            ],
+            "mean_interarrival_time": 1.5
+        },
+        "performance_criteria": {
+            "min_on_time_rate": 70.0,
+            "max_avg_delay": 10.0,
+            "min_avg_reward": -25.0
+        },
+        "min_episodes": 50,
+        "max_episodes": 100
+    }
+]

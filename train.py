@@ -104,7 +104,8 @@ def get_solver_params(solver):
     attribute_list = [
         'buffer', 'max_postponements', 'max_postpone_time', 
         'vehicle_capacity', 'service_time', 'mean_prep_time', 
-        'delivery_window', 'max_bundle_size'
+        'delivery_window', 'max_bundle_size', 'postponement_method',
+        'rl_training_mode', 'rl_state_size'  # Add RL attributes
     ]
     
     # Extract directly accessible parameters
@@ -112,15 +113,15 @@ def get_solver_params(solver):
         if hasattr(solver, attr):
             params[attr] = getattr(solver, attr)
     
-    # For ACA solver, try to get additional parameters from time_calculator
-    if hasattr(solver, 'time_calculator'):
-        time_calc = solver.time_calculator
-        if hasattr(time_calc, 'delivery_window') and 'delivery_window' not in params:
-            params['delivery_window'] = time_calc.delivery_window
-        if hasattr(time_calc, 'mean_prep_time') and 'mean_prep_time' not in params:
-            params['mean_prep_time'] = time_calc.mean_prep_time
-        if hasattr(time_calc, 'service_time') and 'service_time' not in params:
-            params['service_time'] = time_calc.service_time
+    # RL specific parameters
+    if hasattr(solver, 'postponement_method') and solver.postponement_method == "rl":
+        # Add RL-specific metrics
+        if hasattr(solver.postponement, 'total_training_steps'):
+            params['rl_training_steps'] = solver.postponement.total_training_steps
+        if hasattr(solver.postponement, 'exploration_rate'):
+            params['rl_exploration_rate'] = solver.postponement.exploration_rate
+        if hasattr(solver.postponement, 'batch_losses') and solver.postponement.batch_losses:
+            params['rl_avg_loss'] = sum(solver.postponement.batch_losses[-100:]) / min(100, len(solver.postponement.batch_losses))
     
     # For other components that might have parameters
     for component_name in ['vehicle_ops', 'postponement', 'route_utils']:
@@ -130,27 +131,24 @@ def get_solver_params(solver):
                 if hasattr(component, attr) and attr not in params:
                     params[attr] = getattr(component, attr)
     
-    # For nested components (in case parameters are further nested)
-    if hasattr(solver, 'vehicle_ops') and hasattr(solver.vehicle_ops, 'time_calculator'):
-        time_calc = solver.vehicle_ops.time_calculator
-        if hasattr(time_calc, 'delivery_window') and 'delivery_window' not in params:
-            params['delivery_window'] = time_calc.delivery_window
-    
     return params
 
 def run_test_episode(
     solver_name: str = "fastest",
-    district_day=None, # Combined parameter: either None or (district_id, day) tuple
-    meituan_config=None,  # New parameter for custom configuration
+    meituan_config=None,
     seed: Optional[int] = None,
     reposition_idle_vehicles: bool = False,
     visualize: bool = False,
     warmup_duration: int = 60,
+    save_rl_model: bool = False,
+    rl_model_path: str = None,
+    save_results_to_disk=True,
+    env_config: Optional[Dict] = None
 ):
     # is_paused = False
     simulation_duration = simulation_duration = get_env_config(None)["simulation_duration"]  # 420
-    speed = 40.0  # km/h as per paper
-    street_network_factor = 1.4  # as per paper
+    speed = 20   # 40.0 km/h in paper, 10kmh Durchschnitt in Meituan Daten
+    street_network_factor = 1.0  # 1.4 in paper, we calculated the average speed over the euclidic distance, so no adjustment necessary
     movement_per_step = (speed / 60) / street_network_factor  # km per minute adjusted for street network
 
     # Initialize environment and solver
@@ -163,21 +161,11 @@ def run_test_episode(
             "visualize": visualize,
         }
     )
-
-    # Handle Meituan data configuration
-    if district_day is not None and meituan_config is None:
-        # Create default configuration if district_day is provided but no custom config
-        district_id, day = district_day
-        meituan_config = MeituanDataConfig(
-            district_id=district_id,
-            day=day,
-            use_restaurant_positions=True,
-            use_vehicle_count=True,         # Add this new parameter
-            use_vehicle_positions=True,
-            use_service_area=True,
-            use_real_orders=False
-        )
     
+    # Apply custom environment config if provided
+    if env_config:
+        env_params.update(env_config)
+
     # Apply Meituan data configuration to environment parameters
     if meituan_config is not None:
         env_params = meituan_config.apply_to_env_params(env_params)
@@ -191,9 +179,13 @@ def run_test_episode(
     # Reset the environment to properly initialize
     state = env.reset()
 
+    logging.info(f"Starting simulation with solver: {solver_name}")
     # solver = SOLVERS[solver_name](movement_per_step)
     solver = SOLVERS[solver_name](movement_per_step, env.location_manager)
 
+    # Load RL model if path provided
+    if rl_model_path and hasattr(solver, 'postponement_method') and solver.postponement_method == "rl":
+        solver.postponement.load_model(rl_model_path)
 
     # Initialize statistics
     episode_stats = {
@@ -340,194 +332,205 @@ def run_test_episode(
 
         state = next_state
         step += 1
-
-    # Calculate final metrics
-    total_orders = max(1, episode_stats["total_orders"])
-    delivered_orders = episode_stats["orders_delivered"]
-
-    late_orders = len(episode_stats["late_orders"])
-    # Before saving, calculate average rates
-    episode_stats["active_period_idle_rates_by_vehicle"] = {
-        vid: sum(rates) / len(rates) for vid, rates in episode_stats["active_period_idle_rates_by_vehicle"].items()
-    }
-
-    # Calculate overall active period idle rate as average of vehicle rates
-    if episode_stats["active_period_idle_rates_by_vehicle"]:
-        vehicle_rates = list(episode_stats["active_period_idle_rates_by_vehicle"].values())
-        episode_stats["active_period_idle_rate"] = sum(vehicle_rates) / len(vehicle_rates)
-    else:
-        episode_stats["active_period_idle_rate"] = 0.0
-
-    # ----- KPI Tracking -----
-    # Calculate averages for all time metrics
-    if episode_stats["true_prep_times"]:
-        episode_stats["avg_true_prep_time"] = sum(episode_stats["true_prep_times"]) / len(episode_stats["true_prep_times"])
-
-    if episode_stats["order_wait_times"]:
-        episode_stats["avg_order_wait_time"] = sum(episode_stats["order_wait_times"]) / len(episode_stats["order_wait_times"])
-
-    if episode_stats["total_pickup_times"]:
-        episode_stats["avg_total_pickup_time"] = sum(episode_stats["total_pickup_times"]) / len(episode_stats["total_pickup_times"])
-
-    # Calculate average times by restaurant
-    episode_stats["avg_true_prep_by_restaurant"] = {
-        r_id: sum(times) / len(times) 
-        for r_id, times in episode_stats["true_prep_by_restaurant"].items()
-    }
-
-    episode_stats["avg_order_wait_by_restaurant"] = {
-        r_id: sum(times) / len(times) 
-        for r_id, times in episode_stats["order_wait_by_restaurant"].items()
-    }
-
-    episode_stats["avg_total_pickup_by_restaurant"] = {
-        r_id: sum(times) / len(times) 
-        for r_id, times in episode_stats["total_pickup_by_restaurant"].items()
-    }
-
-    episode_stats["avg_driver_wait_by_restaurant"] = {
-        r_id: sum(times) / len(times) 
-        for r_id, times in episode_stats["driver_wait_by_restaurant"].items()
-    }
-
-    # Calculate percentage of orders where drivers had to wait
-    if delivered_orders > 0:
-        episode_stats["driver_wait_percentage"] = (episode_stats["driver_wait_orders"] / delivered_orders) * 100
-    else:
-        episode_stats["driver_wait_percentage"] = 0.0
-    # ----- KPI Tracking -----
-
-    episode_stats = calculate_capacity_metrics(episode_stats, simulation_duration, cooldown_duration, warmup_duration)
-    logger.info("\nFinal Performance Metrics:")
-    logger.info(f"Total simulation steps: {step}")
-    logger.info(f"Total Orders: {total_orders}")
-    logger.info(f"Orders Delivered: {delivered_orders}")
-    logger.info(
-        f"On-Time Delivery Rate: {((delivered_orders - late_orders) / delivered_orders * 100):.1f}%"
-        if delivered_orders
-        else "0%"
-    )
-
-    logger.info("\nDelay Metrics:")
-    logger.info(f"Number of Late Orders: {late_orders}")
-    logger.info(
-        f"Percentage of Late Orders: {(late_orders / delivered_orders * 100):.1f}%" if delivered_orders else "0%"
-    )
-
-    if episode_stats["delay_values"]:
-        avg_delay = sum(episode_stats["delay_values"]) / len(episode_stats["delay_values"])
-        logger.info(f"Average Delay of Late Orders: {avg_delay:.1f} minutes")
-        logger.info(f"Maximum Delay: {episode_stats['max_delay']:.1f} minutes")
-
-    logger.info("\nOperational Metrics:")
-    logger.info(f"Total Distance Traveled: {episode_stats['total_distance']:.1f}")
-    logger.info(
-        f"Average Distance per Order: {(episode_stats['total_distance'] / delivered_orders):.1f}"
-        if delivered_orders
-        else "0.0"
-    )
-
-    logger.info("\nSystem Capacity Metrics:")
-    logger.info(f"Orders Per Hour: {episode_stats['orders_per_hour']:.1f}")
-    logger.info(f"Active Period Orders Per Hour: {episode_stats['active_period_orders_per_hour']:.1f}")
-    logger.info(f"Theoretical Daily Capacity: {episode_stats['system_capacity']:.1f} orders")
-    logger.info(f"Active Period Daily Capacity: {episode_stats['active_period_capacity']:.1f} orders")
-
-    logger.info("\nActive Idle Time Metrics:")
-    logger.info(f"Active Period Idle Rate: {(episode_stats['active_period_idle_rate'] * 100):.1f}%")
-    logger.info("Active Period Idle Rates by Vehicle:")
-    for vid, rate in episode_stats["active_period_idle_rates_by_vehicle"].items():
-        logger.info(f"  Vehicle {vid}: {(rate * 100):.1f}%")
-
-    logger.info(f"Total Orders Postponed: {len(episode_stats['postponed_orders'])}")
-    logger.info(
-        f"Postponement Rate: {(len(episode_stats['postponed_orders']) / max(1, episode_stats['total_orders']) * 100):.1f}%"
-    )
-    logger.info(f"Total accumulated reward: {total_reward:.2f}")
-
     # Save results
     episode_stats["total_reward"] = total_reward
 
-    # Orders per Restaurants
-    logger.info("\nRestaurant Distribution Metrics:")
-    if episode_stats["orders_per_restaurant"]:
-        # Sort restaurants by order count (descending)
-        sorted_restaurants = sorted(
-            episode_stats["orders_per_restaurant"].items(), 
-            key=lambda x: x[1], 
-            reverse=True
+    if save_results_to_disk:
+
+        # Calculate final metrics
+        total_orders = max(1, episode_stats["total_orders"])
+        delivered_orders = episode_stats["orders_delivered"]
+
+        late_orders = len(episode_stats["late_orders"])
+        # Before saving, calculate average rates
+        episode_stats["active_period_idle_rates_by_vehicle"] = {
+            vid: sum(rates) / len(rates) for vid, rates in episode_stats["active_period_idle_rates_by_vehicle"].items()
+        }
+
+        # Calculate overall active period idle rate as average of vehicle rates
+        if episode_stats["active_period_idle_rates_by_vehicle"]:
+            vehicle_rates = list(episode_stats["active_period_idle_rates_by_vehicle"].values())
+            episode_stats["active_period_idle_rate"] = sum(vehicle_rates) / len(vehicle_rates)
+        else:
+            episode_stats["active_period_idle_rate"] = 0.0
+
+        # ----- KPI Tracking -----
+        # Calculate averages for all time metrics
+        if episode_stats["true_prep_times"]:
+            episode_stats["avg_true_prep_time"] = sum(episode_stats["true_prep_times"]) / len(episode_stats["true_prep_times"])
+
+        if episode_stats["order_wait_times"]:
+            episode_stats["avg_order_wait_time"] = sum(episode_stats["order_wait_times"]) / len(episode_stats["order_wait_times"])
+
+        if episode_stats["total_pickup_times"]:
+            episode_stats["avg_total_pickup_time"] = sum(episode_stats["total_pickup_times"]) / len(episode_stats["total_pickup_times"])
+
+        # Calculate average times by restaurant
+        episode_stats["avg_true_prep_by_restaurant"] = {
+            r_id: sum(times) / len(times) 
+            for r_id, times in episode_stats["true_prep_by_restaurant"].items()
+        }
+
+        episode_stats["avg_order_wait_by_restaurant"] = {
+            r_id: sum(times) / len(times) 
+            for r_id, times in episode_stats["order_wait_by_restaurant"].items()
+        }
+
+        episode_stats["avg_total_pickup_by_restaurant"] = {
+            r_id: sum(times) / len(times) 
+            for r_id, times in episode_stats["total_pickup_by_restaurant"].items()
+        }
+
+        episode_stats["avg_driver_wait_by_restaurant"] = {
+            r_id: sum(times) / len(times) 
+            for r_id, times in episode_stats["driver_wait_by_restaurant"].items()
+        }
+
+        # Calculate percentage of orders where drivers had to wait
+        if delivered_orders > 0:
+            episode_stats["driver_wait_percentage"] = (episode_stats["driver_wait_orders"] / delivered_orders) * 100
+        else:
+            episode_stats["driver_wait_percentage"] = 0.0
+        
+        # ----- KPI Tracking -----
+        episode_stats = calculate_capacity_metrics(episode_stats, simulation_duration, cooldown_duration, warmup_duration)
+        logger.info("\nFinal Performance Metrics:")
+        logger.info(f"Total simulation steps: {step}")
+        logger.info(f"Total Orders: {total_orders}")
+        logger.info(f"Orders Delivered: {delivered_orders}")
+        logger.info(
+            f"On-Time Delivery Rate: {((delivered_orders - late_orders) / delivered_orders * 100):.1f}%"
+            if delivered_orders
+            else "0%"
         )
-        logger.info(f"Total restaurants served: {len(episode_stats['orders_per_restaurant'])}")
-        logger.info(f"Restaurant with most orders: ID {sorted_restaurants[0][0]} with {sorted_restaurants[0][1]} orders")
-        
-        # Calculate distribution statistics
-        order_counts = list(episode_stats["orders_per_restaurant"].values())
-        avg_orders = sum(order_counts) / len(order_counts)
-        logger.info(f"Average orders per restaurant: {avg_orders:.1f}")
-        logger.info(f"Order count distribution: Min: {min(order_counts)}, Max: {max(order_counts)}")
-        
-        # Output top 5 restaurants
-        logger.info("Top 5 restaurants by order count:")
-        for i, (r_id, count) in enumerate(sorted_restaurants[:5], 1):
-            logger.info(f"  #{i}: Restaurant {r_id} - {count} orders ({count/delivered_orders*100:.1f}% of all deliveries)")
 
-    # ----- KPI Tracking -----
-    # Add to your existing logging
-    logger.info("\nTime Metrics:")
+        logger.info("\nDelay Metrics:")
+        logger.info(f"Number of Late Orders: {late_orders}")
+        logger.info(
+            f"Percentage of Late Orders: {(late_orders / delivered_orders * 100):.1f}%" if delivered_orders else "0%"
+        )
 
-    # True meal preparation time
-    if episode_stats["true_prep_times"]:
-        logger.info("\nTrue Meal Preparation Time (cooking time):")
-        logger.info(f"  Average: {episode_stats['avg_true_prep_time']:.1f} minutes")
-        logger.info(f"  Maximum: {episode_stats['max_true_prep_time']:.1f} minutes")
-        
-        # Log top 5 restaurants by true prep time
-        if episode_stats["avg_true_prep_by_restaurant"]:
-            logger.info("\n  Top 5 Restaurants by True Preparation Time:")
-            top_prep_restaurants = sorted(
-                episode_stats["avg_true_prep_by_restaurant"].items(), 
+        if episode_stats["delay_values"]:
+            avg_delay = sum(episode_stats["delay_values"]) / len(episode_stats["delay_values"])
+            logger.info(f"Average Delay of Late Orders: {avg_delay:.1f} minutes")
+            logger.info(f"Maximum Delay: {episode_stats['max_delay']:.1f} minutes")
+
+        logger.info("\nOperational Metrics:")
+        logger.info(f"Total Distance Traveled: {episode_stats['total_distance']:.1f}")
+        logger.info(
+            f"Average Distance per Order: {(episode_stats['total_distance'] / delivered_orders):.1f}"
+            if delivered_orders
+            else "0.0"
+        )
+
+        logger.info("\nSystem Capacity Metrics:")
+        logger.info(f"Orders Per Hour: {episode_stats['orders_per_hour']:.1f}")
+        logger.info(f"Active Period Orders Per Hour: {episode_stats['active_period_orders_per_hour']:.1f}")
+        logger.info(f"Theoretical Daily Capacity: {episode_stats['system_capacity']:.1f} orders")
+        logger.info(f"Active Period Daily Capacity: {episode_stats['active_period_capacity']:.1f} orders")
+
+        logger.info("\nActive Idle Time Metrics:")
+        logger.info(f"Active Period Idle Rate: {(episode_stats['active_period_idle_rate'] * 100):.1f}%")
+        logger.info("Active Period Idle Rates by Vehicle:")
+        for vid, rate in episode_stats["active_period_idle_rates_by_vehicle"].items():
+            logger.info(f"  Vehicle {vid}: {(rate * 100):.1f}%")
+
+        logger.info(f"Total Orders Postponed: {len(episode_stats['postponed_orders'])}")
+        logger.info(
+            f"Postponement Rate: {(len(episode_stats['postponed_orders']) / max(1, episode_stats['total_orders']) * 100):.1f}%"
+        )
+        logger.info(f"Total accumulated reward: {total_reward:.2f}")
+
+
+
+        # Orders per Restaurants
+        logger.info("\nRestaurant Distribution Metrics:")
+        if episode_stats["orders_per_restaurant"]:
+            # Sort restaurants by order count (descending)
+            sorted_restaurants = sorted(
+                episode_stats["orders_per_restaurant"].items(), 
                 key=lambda x: x[1], 
                 reverse=True
-            )[:5]
+            )
+            logger.info(f"Total restaurants served: {len(episode_stats['orders_per_restaurant'])}")
+            logger.info(f"Restaurant with most orders: ID {sorted_restaurants[0][0]} with {sorted_restaurants[0][1]} orders")
             
-            for i, (r_id, avg_time) in enumerate(top_prep_restaurants, 1):
-                order_count = len(episode_stats["true_prep_by_restaurant"][r_id])
-                logger.info(f"    #{i}: Restaurant {r_id} - {avg_time:.1f} minutes average ({order_count} orders)")
-
-    # Order wait time after being ready
-    if episode_stats["order_wait_times"]:
-        logger.info("\nOrder Wait Time (after food was ready):")
-        logger.info(f"  Average: {episode_stats['avg_order_wait_time']:.1f} minutes")
-        logger.info(f"  Maximum: {episode_stats['max_order_wait_time']:.1f} minutes")
-        
-        # Log top 5 restaurants by order wait time
-        if episode_stats["avg_order_wait_by_restaurant"]:
-            logger.info("\n  Top 5 Restaurants by Order Wait Time:")
-            top_wait_restaurants = sorted(
-                episode_stats["avg_order_wait_by_restaurant"].items(), 
-                key=lambda x: x[1], 
-                reverse=True
-            )[:5]
+            # Calculate distribution statistics
+            order_counts = list(episode_stats["orders_per_restaurant"].values())
+            avg_orders = sum(order_counts) / len(order_counts)
+            logger.info(f"Average orders per restaurant: {avg_orders:.1f}")
+            logger.info(f"Order count distribution: Min: {min(order_counts)}, Max: {max(order_counts)}")
             
-            for i, (r_id, avg_time) in enumerate(top_wait_restaurants, 1):
-                order_count = len(episode_stats["order_wait_by_restaurant"][r_id])
-                logger.info(f"    #{i}: Restaurant {r_id} - {avg_time:.1f} minutes average ({order_count} orders)")
+            # Output top 5 restaurants
+            logger.info("Top 5 restaurants by order count:")
+            for i, (r_id, count) in enumerate(sorted_restaurants[:5], 1):
+                logger.info(f"  #{i}: Restaurant {r_id} - {count} orders ({count/delivered_orders*100:.1f}% of all deliveries)")
 
-    # Total pickup time
-    if episode_stats["total_pickup_times"]:
-        logger.info("\nTotal Time to Pickup (from order creation to pickup):")
-        logger.info(f"  Average: {episode_stats['avg_total_pickup_time']:.1f} minutes")
-        logger.info(f"  Maximum: {episode_stats['max_total_pickup_time']:.1f} minutes")
+        # ----- KPI Tracking -----
+        # Add to your existing logging
+        logger.info("\nTime Metrics:")
 
-    # Driver wait time
-    logger.info("\nDriver Wait Time (drivers waiting for food):")
-    logger.info(f"  Total Driver Wait Time: {episode_stats['total_driver_wait_time']:.1f} minutes")
-    logger.info(f"  Drivers Waited for {episode_stats['driver_wait_orders']} orders ({episode_stats['driver_wait_percentage']:.1f}%)")
-    # ----- KPI Tracking -----
-    # Extract solver parameters
-    solver_params = get_solver_params(solver)
+        # True meal preparation time
+        if episode_stats["true_prep_times"]:
+            logger.info("\nTrue Meal Preparation Time (cooking time):")
+            logger.info(f"  Average: {episode_stats['avg_true_prep_time']:.1f} minutes")
+            logger.info(f"  Maximum: {episode_stats['max_true_prep_time']:.1f} minutes")
+            
+            # Log top 5 restaurants by true prep time
+            if episode_stats["avg_true_prep_by_restaurant"]:
+                logger.info("\n  Top 5 Restaurants by True Preparation Time:")
+                top_prep_restaurants = sorted(
+                    episode_stats["avg_true_prep_by_restaurant"].items(), 
+                    key=lambda x: x[1], 
+                    reverse=True
+                )[:5]
+                
+                for i, (r_id, avg_time) in enumerate(top_prep_restaurants, 1):
+                    order_count = len(episode_stats["true_prep_by_restaurant"][r_id])
+                    logger.info(f"    #{i}: Restaurant {r_id} - {avg_time:.1f} minutes average ({order_count} orders)")
+
+        # Order wait time after being ready
+        if episode_stats["order_wait_times"]:
+            logger.info("\nOrder Wait Time (after food was ready):")
+            logger.info(f"  Average: {episode_stats['avg_order_wait_time']:.1f} minutes")
+            logger.info(f"  Maximum: {episode_stats['max_order_wait_time']:.1f} minutes")
+            
+            # Log top 5 restaurants by order wait time
+            if episode_stats["avg_order_wait_by_restaurant"]:
+                logger.info("\n  Top 5 Restaurants by Order Wait Time:")
+                top_wait_restaurants = sorted(
+                    episode_stats["avg_order_wait_by_restaurant"].items(), 
+                    key=lambda x: x[1], 
+                    reverse=True
+                )[:5]
+                
+                for i, (r_id, avg_time) in enumerate(top_wait_restaurants, 1):
+                    order_count = len(episode_stats["order_wait_by_restaurant"][r_id])
+                    logger.info(f"    #{i}: Restaurant {r_id} - {avg_time:.1f} minutes average ({order_count} orders)")
+
+        # Total pickup time
+        if episode_stats["total_pickup_times"]:
+            logger.info("\nTotal Time to Pickup (from order creation to pickup):")
+            logger.info(f"  Average: {episode_stats['avg_total_pickup_time']:.1f} minutes")
+            logger.info(f"  Maximum: {episode_stats['max_total_pickup_time']:.1f} minutes")
+
+        # Driver wait time
+        logger.info("\nDriver Wait Time (drivers waiting for food):")
+        logger.info(f"  Total Driver Wait Time: {episode_stats['total_driver_wait_time']:.1f} minutes")
+        logger.info(f"  Drivers Waited for {episode_stats['driver_wait_orders']} orders ({episode_stats['driver_wait_percentage']:.1f}%)")
+        # ----- KPI Tracking -----
+        # Extract solver parameters
+        solver_params = get_solver_params(solver)
+        # Save results to disk
+        save_results(episode_stats, solver_name, seed, meituan_config, solver_params, env_params)
     
-    save_results(episode_stats, solver_name, seed, meituan_config, solver_params)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    # Save RL model if requested
+    if save_rl_model and hasattr(solver, 'save_rl_model'):
+        model_save_path = f"data/models/rl_aca_{timestamp}.pt" if rl_model_path is None else rl_model_path
+        solver.save_rl_model(model_save_path)
+        logger.info(f"RL model saved to {model_save_path}")
+
     return episode_stats
 
 # Helper functions to calculate and save results
@@ -545,7 +548,7 @@ def calculate_capacity_metrics(stats, simulation_duration, cooldown_duration, wa
 
     return stats
 
-def save_results(stats: Dict, solver_name: str, seed: Optional[int] = None, meituan_config=None, solver_params=None):
+def save_results(stats: Dict, solver_name: str, seed: Optional[int] = None, meituan_config=None, solver_params=None, env_params=None):
     results_dir = "data/simulation_results"
     os.makedirs(results_dir, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -637,7 +640,8 @@ def save_results(stats: Dict, solver_name: str, seed: Optional[int] = None, meit
         "seed": seed,
         "timestamp": timestamp,
         "config": config_info,  # Add the config information
-        "solver_params": solver_params or {}, 
+        "solver_params": solver_params or {},
+        "env_params": env_params or {},  # Add environment parameters
         "late_orders": list(stats["late_orders"]),
         "postponed_orders": list(stats["postponed_orders"]),
         "idle_rates_by_vehicle": stats["idle_rates_by_vehicle"],
@@ -691,6 +695,60 @@ def save_results(stats: Dict, solver_name: str, seed: Optional[int] = None, meit
         # Add solver parameters with prefix to avoid column name collisions
         for param_name, param_value in solver_params.items():
             solver_param_entries[f"solver_{param_name}"] = param_value
+
+    # Create a fixed set of fieldnames to ensure consistent column order
+    # This should include ALL possible fields from ALL solvers
+    fixed_fieldnames = [
+        "timestamp", "solver", "seed",
+        # Config parameters
+        "district_id", "day", "order_generation_mode", "simulation_hours", "simulation_start_hour",
+        "use_restaurant_positions", "use_vehicle_count", "use_vehicle_positions", 
+        "use_service_area", "use_deadlines",
+
+        # Environment parameters
+        "env_num_restaurants", "env_num_vehicles", "env_mean_prep_time", "env_prep_time_var",
+        "env_delivery_window", "env_simulation_duration", "env_cooldown_duration",
+        "env_mean_interarrival_time", "env_service_area_dimensions", "env_downtown_concentration",
+        "env_service_time", "env_movement_per_step", "env_reposition_idle_vehicles",
+        "env_seed", "env_update_interval", "env_demand_pattern", "env_visualize",
+
+        
+        # Solver parameters - include all possible solver parameters here
+        "solver_buffer", "solver_max_postponements", "solver_max_postpone_time",
+        "solver_vehicle_capacity", "solver_service_time", "solver_mean_prep_time",
+        "solver_delivery_window", "solver_max_bundle_size",
+        # Add any other potential solver parameters
+        
+        # Result metrics
+        "total_orders", "orders_delivered", "total_delay", "total_reward",
+        "late_orders", "max_delay", "avg_delay", "total_distance",
+        "postponed_orders", "active_period_idle_rate", "active_period_max_idle",
+        "active_period_min_idle", "orders_per_hour", "active_period_orders_per_hour",
+        "system_capacity", "active_period_capacity", "on_time_delivery_rate",
+        "percentage_late_orders", "avg_delay_late_orders", "avg_distance_per_order",
+        
+        # Restaurant metrics
+        "total_restaurants_served", "avg_orders_per_restaurant",
+        "min_restaurant_orders", "max_restaurant_orders", "top_restaurant_id",
+        
+        # Time metrics
+        "avg_true_prep_time", "max_true_prep_time", "avg_order_wait_time",
+        "max_order_wait_time", "avg_total_pickup_time", "max_total_pickup_time",
+        "total_driver_wait_time", "driver_wait_orders", "driver_wait_percentage",
+        
+        "Note", ""
+    ]
+
+    # Initialize summary_data with empty strings for all fields
+    summary_data = {field: "" for field in fixed_fieldnames}
+    # Add environment parameters to summary_data
+    env_param_entries = {}
+    if env_params:
+        for param_name, param_value in env_params.items():
+            # Convert tuple parameters to string for CSV
+            if isinstance(param_value, tuple):
+                param_value = str(param_value)
+            env_param_entries[f"env_{param_name}"] = param_value
 
     summary_data = {
         "timestamp": timestamp,
@@ -761,9 +819,11 @@ def save_results(stats: Dict, solver_name: str, seed: Optional[int] = None, meit
         "Note": "",
         "": "",
     }
+    # Update summary_data with environment parameters
+    summary_data.update(env_param_entries)
 
     with open(csv_path, "a", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=summary_data.keys())
+        writer = csv.DictWriter(f, fieldnames=fixed_fieldnames)
         if not csv_exists:
             writer.writeheader()
         writer.writerow(summary_data)
@@ -820,8 +880,8 @@ def get_env_config(movement_per_step):
     """Environment configuration with explanatory documentation"""
     return {
         # System size parameters
-        "num_restaurants": 110,  # Production: 110 restaurants in system
-        "num_vehicles": 15,  # Production: 15 delivery vehicles
+        "num_restaurants": 15,  # Production: 110 restaurants in system
+        "num_vehicles": 5,  # Production: 15 delivery vehicles
         # Time parameters
         "mean_prep_time": 13.0,  # Gamma distributed preparation time (minutes) -> maybe should be Standard dist?
         "prep_time_var": 2.0,  # Preparation time variance (COV: 0.0-0.6)
@@ -829,7 +889,7 @@ def get_env_config(movement_per_step):
         "simulation_duration": 420,  # 420 # Total simulation time (minutes)
         "cooldown_duration": 0,  # No new orders in final period (minutes)
         # Workload parameters
-        "mean_interarrival_time": 0.2,  # Order frequency:
+        "mean_interarrival_time": 2,  # Order frequency:
         # Andersrum??, kleinere interarrival time = mehr Orders ...
         # Light: 1.5 orders/hr/vehicle (180 total)
         # Normal: 2.0 orders/hr/vehicle (240 total)
@@ -858,10 +918,30 @@ SOLVERS = {
         max_postponements=0,
         max_postpone_time=10,
         # Time & Vehicle parameters
-        vehicle_capacity=3,
+        vehicle_capacity=3, # test 5 
         service_time=2.0,
         mean_prep_time=13,
         delivery_window=40.0,  ### assumed to be the same for all orders, would potentially have to be adjusted.
+        # Default to heuristic postponement
+        postponement_method="heuristic",
+    ),
+    # Add RL-based ACA
+    "rl_aca": lambda movement_per_step, location_manager: ACA(
+        location_manager=location_manager,
+        # Core algorithm parameters
+        buffer=40,
+        max_postponements=3,
+        max_postpone_time=10,
+        # Vehicle parameters
+        vehicle_capacity=3,
+        # Time parameters
+        service_time=2.0,
+        mean_prep_time=13,
+        delivery_window=40.0,
+        # Use RL-based postponement
+        postponement_method="rl", # rl
+        rl_training_mode=True,
+        rl_state_size=10,
     ),
     "bundler": lambda s, loc_manager: FastestBundler(
         movement_per_step=s,
@@ -874,17 +954,17 @@ SOLVERS = {
 custom_config = MeituanDataConfig(
     district_id=10,                         # Districts 1 to 22
     day="20221018",                         # Specify district 20221017 to 20221024
-    use_restaurant_positions=True,          # Use real restaurant positions
+    use_restaurant_positions=False,          # Use real restaurant positions
     use_vehicle_count=False,                # Use real number of vehicles
     use_vehicle_positions=False,            # Use random vehicle positions
-    use_service_area=True,                  # Use real service area dimensions
+    use_service_area=False,                  # Use real service area dimensions
     use_deadlines=False,                    # Use real order deadlines
-    order_generation_mode="default",         # default, pattern, replay
+    order_generation_mode="pattern",         # default, pattern, replay
     # None,lunch_dinner_pattern, hourly_pattern or function_pattern
     # Take mean arrival time from the env. config
-    temporal_pattern=None,                  # see comment above
-    simulation_start_hour=10,               # e.g., Start at 11 AM
-    simulation_duration_hours=12             # e.g., Simulate 8 hours
+    temporal_pattern=lunch_dinner_pattern,                  # see comment above
+    simulation_start_hour=None,               # e.g., Start at 11 AM
+    simulation_duration_hours=None             # e.g., Simulate 8 hours
 )
 
 if __name__ == "__main__":

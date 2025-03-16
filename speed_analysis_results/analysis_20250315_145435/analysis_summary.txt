@@ -1,0 +1,15 @@
+Meituan Vehicle Speed Analysis Summary
+=====================================
+
+Analysis Date: 20250315_145435
+Total waybill records analyzed: 654343
+Total rider records analyzed: 62044
+Total speed records calculated: 1144637
+Realistic speed records used: 1067897
+
+Speed Statistics (km/h):
+Mean speed: 6.07
+Median speed: 5.30
+Standard deviation: 3.82
+25th percentile: 3.28
+75th percentile: 8.01

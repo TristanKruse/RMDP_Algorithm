@@ -52,7 +52,6 @@ class RestaurantMealDeliveryEnv:
     ):
         self.reposition_idle_vehicles = reposition_idle_vehicles
 
-        logger.info(f"CHECKINGPASS: {self.reposition_idle_vehicles}")
         # Set random seeds if provided
         if seed is not None:
             random.seed(seed)
@@ -116,7 +115,7 @@ class RestaurantMealDeliveryEnv:
         }
 
     def step(self, action: Tuple[Dict[int, Route], set]) -> Tuple[State, float, bool, dict]:
-        logger.info(f"self.current_time: {self.current_time}")
+        # logger.info(f"self.current_time: {self.current_time}")
         # 1. Unpack the solver's action
         new_route_plan, postponed_orders = action
 

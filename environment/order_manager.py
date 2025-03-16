@@ -137,7 +137,7 @@ class OrderManager:
         if hasattr(self, 'location_manager'):
             self.order_generator.location_manager = self.location_manager
         
-        logger.info(f"Set up OrderGenerator in replay mode with {len(orders_df)} real orders")
+        # logger.info(f"Set up OrderGenerator in replay mode with {len(orders_df)} real orders")
 
     def set_order_generator(self, generator):
         """Set custom order generator"""

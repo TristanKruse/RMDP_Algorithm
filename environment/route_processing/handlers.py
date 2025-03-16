@@ -86,10 +86,10 @@ class Handlers:
                     "bundle_orders": bundle_orders,
                     "order_ids": bundle_orders
                 })
-                old_phase = "None" if vehicle.current_phase is None else vehicle.current_phase.get("stage", "unknown")
+                # old_phase = "None" if vehicle.current_phase is None else vehicle.current_phase.get("stage", "unknown")
                 vehicle.current_phase = service_phase
-                new_phase = "None" if vehicle.current_phase is None else vehicle.current_phase.get("stage", "unknown")
-                logger.info(f"Vehicle {vehicle.id} phase changed: {old_phase} -> {new_phase}")
+                # new_phase = "None" if vehicle.current_phase is None else vehicle.current_phase.get("stage", "unknown")
+                # logger.info(f"Vehicle {vehicle.id} phase changed: {old_phase} -> {new_phase}")
 
                 # Mark all orders in bundle as picked up
                 for order_id in bundle_orders:
@@ -108,14 +108,7 @@ class Handlers:
                         order.true_prep_time = true_prep_time
                         order.order_wait_time = order_wait_time
                         order.total_time_to_pickup = total_time_to_pickup
-
-                        logger.info(f"Order {order_id} picked up: true prep time={true_prep_time:.1f} min, " +
-                                f"wait time after ready={order_wait_time:.1f} min, " +
-                                f"total time to pickup={total_time_to_pickup:.1f} min")
-                        # ----- KPI Tracking -----
-
-                        logger.info(f"Marked order {order_id} as picked up")
-                
+                        # ----- KPI Tracking -----                
                 return new_loc, self.location_manager.get_travel_time(vehicle.current_location, new_loc), 0.0, False
             else:
                 # ----- KPI Tracking -----
@@ -125,7 +118,6 @@ class Handlers:
                     if order:
                         # Mark that the driver is waiting for this order
                         order.driver_waiting = True
-                        logger.info(f"Driver waiting for order {order_id} - ready in {order.ready_time - current_time:.1f} min")
                 # ----- KPI Tracking -----
                 return new_loc, 0.0, 0.0, False
 
@@ -190,13 +182,13 @@ class Handlers:
             first_order = next((o for o in order_manager.active_orders if o.id == first_order_id), None)
             if not first_order:
                 return current_loc, 0.0, 0.0, False
-            old_phase = "None" if vehicle.current_phase is None else vehicle.current_phase.get("stage", "unknown")
+            # old_phase = "None" if vehicle.current_phase is None else vehicle.current_phase.get("stage", "unknown")
 
             vehicle.current_phase = self.phase_management._initialize_delivery_phase(
                 first_order_id, current_loc, first_order.delivery_node_id
             )
-            new_phase = "None" if vehicle.current_phase is None else vehicle.current_phase.get("stage", "unknown")
-            logger.info(f"Vehicle {vehicle.id} phase changed: {old_phase} -> {new_phase}")
+            # new_phase = "None" if vehicle.current_phase is None else vehicle.current_phase.get("stage", "unknown")
+            # logger.info(f"Vehicle {vehicle.id} phase changed: {old_phase} -> {new_phase}")
             # Preserve all bundle information
             vehicle.current_phase.update({
                 "is_bundle": True,
