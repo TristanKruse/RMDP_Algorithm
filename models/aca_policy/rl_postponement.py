@@ -6,6 +6,7 @@ import torch.optim as optim
 import random
 import logging
 from collections import deque
+import os
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -21,6 +22,7 @@ class PostponementValueNetwork(nn.Module):
         self.fc3 = nn.Linear(hidden_size, 1)  # Single output: estimated value of state-action
         
     def forward(self, x):
+        # When calling self.value_network(x), this method is automatically executed by PyTorch
         x = torch.relu(self.fc1(x))
         x = torch.relu(self.fc2(x))
         return self.fc3(x)
@@ -62,8 +64,6 @@ class RLPostponementDecision:
     
     def __init__(
         self,
-        max_postponements: int,
-        max_postpone_time: float,
         learning_rate: float = 0.001,
         discount_factor: float = 0.95,
         exploration_rate: float = 0.3,
@@ -71,12 +71,10 @@ class RLPostponementDecision:
         min_exploration_rate: float = 0.05,
         batch_size: int = 32,
         training_mode: bool = True,
-        state_size: int = 10,  # Number of features in state representation
+        state_size: int = 1,  # Number of features in state representation
         lns_sample_size: int = 5  # Number of neighborhood samples to evaluate
     ):
         # Core parameters
-        self.max_postponements = max_postponements
-        self.max_postpone_time = max_postpone_time
         self.training_mode = training_mode
         self.state_size = state_size
         self.lns_sample_size = lns_sample_size
@@ -108,71 +106,104 @@ class RLPostponementDecision:
         self.total_training_steps = 0
         self.batch_losses = []
     
-    def extract_state_features(self, order_id: int, postponed: Set[int], route_plan: dict, current_time: float, state: dict) -> torch.Tensor:
+    def extract_state_features(self, order_id: int, route_plan: dict, current_time: float, state: dict) -> torch.Tensor:
         """
         Extract relevant features from the state for the RL model.
         """
         features = []
         
-        # 1. System-level features
-        
-        # Time of day (normalized to [0,1])
+        # I. System-level features
+        # 1. Feature: Time of day (normalized to [0,1])
+        # Captures temporal patterns in demand
         time_of_day = (current_time / 60) % 24 / 24
         features.append(time_of_day)
         
-        # System utilization
+        # 2. Feature: System utilization
+        # When utilization is high, postponing might be beneficial
         total_vehicles = len(route_plan)
         busy_vehicles = sum(1 for r in route_plan.values() if r.sequence)
         system_utilization = busy_vehicles / max(1, total_vehicles)
         features.append(system_utilization)
-        
-        # Number of postponed orders (normalized)
-        postponed_ratio = len(postponed) / max(1, self.max_postponements * 3)  # Scale factor
-        features.append(postponed_ratio)
-        
-        # Count active orders and assignments
+
+        # 3. Feature: Unassigned Ratio
+        # Important signal for deciding whether to clear backlog or postpone more
         active_orders = len(state.get("orders", [])) 
         total_assigned = sum(sum(len(p) + len(d) for _, p, d in route.sequence) for route in route_plan.values() if route.sequence)
         unassigned_ratio = (active_orders - total_assigned) / max(1, active_orders)
         features.append(unassigned_ratio)
-        
-        # 2. Order-specific features
+
+        # II. Order-specific features
         order_info = state["unassigned_orders"].get(order_id)
         if order_info:
-            # Time since order creation (normalized)
-            time_since_order = (current_time - order_info["request_time"]) / max(1, self.max_postpone_time * 2)
-            features.append(min(1.0, time_since_order))  # Cap at 1.0
-            
-            # Previous postponements for this order
-            prev_postponements = 0
-            if order_id in self.postponed_orders:
-                _, count = self.postponed_orders[order_id]
-                prev_postponements = count / max(1, self.max_postponements)
-            features.append(prev_postponements)
-            
-            # Is this order's restaurant already in a route?
-            pickup_node_id = order_info["pickup_node_id"].id
-            restaurant_in_routes = 0
-            for route in route_plan.values():
-                if route.sequence:
-                    for node_id, _, _ in route.sequence:
+            # 4. Feature: Order Urgency
+            # Critical for decision-making, how much time has passed relative to the delivery window
+            total_window = order_info["deadline"] - order_info["request_time"]
+            time_elapsed = current_time - order_info["request_time"]  # Time passed since order creation
+            urgency = time_elapsed / total_window  # How much of the window has been used
+
+            features.append(min(1.0, urgency))  # Cap at 1.0 for orders past deadline
+
+            # 5. Feature: Bundling Potential
+            # Calculate how many other unassigned orders are from the same restaurant
+            bundling_potential = 0
+            if order_info:  # Make sure order_info exists
+                pickup_node_id = order_info["pickup_node_id"].id  # Get pickup_node_id from order_info
+                
+                # Count other unassigned orders from the same restaurant
+                same_restaurant_orders = sum(
+                    1 for o_id, o_info in state["unassigned_orders"].items() 
+                    if o_id != order_id and o_info["pickup_node_id"].id == pickup_node_id
+                )
+                # Normalize to [0,1] - assuming rarely more than 5 orders from same restaurant
+                bundling_potential = min(1.0, same_restaurant_orders / 5.0)
+
+            features.append(bundling_potential)
+
+            # 6. Feature: Restaurant Congestion
+            # How many vehicles are already heading to or at this restaurant?
+            restaurant_congestion = 0
+            if order_info:  # Make sure order_info exists
+                pickup_node_id = order_info["pickup_node_id"].id  # Get pickup_node_id from order_info
+                
+                # For this restaurant, how many orders are already assigned vs. how many vehicles are heading there?
+                orders_assigned_to_restaurant = 0
+                vehicles_heading_to_restaurant = 0
+
+                for route in route_plan.values():
+                    if not route.sequence:  # Skip empty routes
+                        continue
+                        
+                    for node_id, pickups, _ in route.sequence:
                         if node_id == pickup_node_id:
-                            restaurant_in_routes = 1
+                            orders_assigned_to_restaurant += len(pickups)
+                            vehicles_heading_to_restaurant += 1
                             break
-            features.append(restaurant_in_routes)
+
+                # This ratio tells us how efficiently the restaurant's orders are being served
+                if vehicles_heading_to_restaurant > 0:
+                    orders_per_vehicle = orders_assigned_to_restaurant / vehicles_heading_to_restaurant
+                    # Normalize to [0,1] - assuming 3 orders per vehicle is optimal
+                    restaurant_congestion = min(1.0, orders_per_vehicle / 3.0)
+                else:
+                    restaurant_congestion = 0.0
+
+            features.append(restaurant_congestion)
         else:
             # If order info not found, add placeholder values
             features.extend([0.0, 0.0, 0.0])
         
-        # 3. Spatial features - simplified for now
+        # III. Spatial features - simplified for now
         # We'll add placeholder values for potential proximity features
-        features.extend([0.0, 0.0, 0.0])
+        # 7. Feature: ....
+        # features.extend([0.0, 0.0, 0.0])
         
         # Ensure we have the right number of features
         if len(features) < self.state_size:
             features.extend([0.0] * (self.state_size - len(features)))
         elif len(features) > self.state_size:
             features = features[:self.state_size]
+
+        logger.debug(f"Order {order_id} features: {features}")
         
         return torch.tensor(features, dtype=torch.float32)
     
@@ -208,25 +239,21 @@ class RLPostponementDecision:
         """
         Decide whether to postpone an order using VFA with LNS.
         """
-        # Check basic constraints first
-        if not self._can_postpone(order_id, postponed, route_plan, current_time, state):
-            return False
-        
         # Extract state features
-        state_tensor = self.extract_state_features(order_id, postponed, route_plan, current_time, state)
+        state_tensor = self.extract_state_features(order_id, route_plan, current_time, state)
         
         # Store state for experience collection if in training mode
         if self.training_mode:
             self.current_episode_states[order_id] = state_tensor
         
-        # Exploration phase - with probability ε, explore randomly
+        # Biased exploration - 90% chance to not postpone during exploration
         if self.training_mode and random.random() < self.exploration_rate:
-            action = random.choice([0, 1])
+            action = 0 if random.random() < 0.9 else 1  # 90% bias toward not postponing
             should_postpone = action == 1
         else:
-            # Exploitation with Large Neighborhood Search
-            should_postpone = self._large_neighborhood_search(state_tensor, order_id, postponed, route_plan, current_time, state)
-        
+            # Exploitation with LNS
+            should_postpone = self._large_neighborhood_search(state_tensor)
+
         # Store action for experience collection if in training mode
         if self.training_mode:
             self.current_episode_actions[order_id] = 1 if should_postpone else 0
@@ -240,22 +267,8 @@ class RLPostponementDecision:
     def _large_neighborhood_search(
         self, 
         state_tensor: torch.Tensor, 
-        order_id: int,
-        postponed: Set[int],
-        route_plan: dict,
-        current_time: float,
-        state: dict
     ) -> bool:
-        """
-        Perform large neighborhood search to find the best postponement decision.
-        
-        In this simplified version:
-        1. We evaluate both options (postpone/don't postpone)
-        2. We could add more complex neighborhood generation in a future version
-        
-        Returns:
-            Boolean indicating whether to postpone
-        """
+
         # Evaluate both options (postpone vs. don't postpone)
         postpone_value = self.estimate_value(state_tensor, 1)
         dont_postpone_value = self.estimate_value(state_tensor, 0)
@@ -265,34 +278,6 @@ class RLPostponementDecision:
         
         # Return action with higher estimated value
         return postpone_value > dont_postpone_value
-    
-    def _can_postpone(self, order_id: int, postponed: Set[int], route_plan: dict, current_time: float, state: dict) -> bool:
-        """
-        Check if order meets basic requirements for postponement.
-        """
-        # Check if already postponed too many times
-        if order_id in self.postponed_orders:
-            first_time, count = self.postponed_orders[order_id]
-            if count >= self.max_postponements:
-                return False
-            if current_time - first_time >= self.max_postpone_time:
-                return False
-        
-        # Check if order's restaurant is next stop for any vehicle
-        order_info = state["unassigned_orders"].get(order_id)
-        if not order_info:
-            return False
-            
-        pickup_node_id = order_info["pickup_node_id"].id
-        
-        # Check each vehicle's next stop
-        for route in route_plan.values():
-            if route.sequence:  # If route has any stops
-                next_stop = route.sequence[0]  # (node_id, pickups, deliveries)
-                if next_stop[0] == pickup_node_id:  # If next stop is this restaurant
-                    return False
-        
-        return True
     
     def _track_postponement(self, order_id: int, current_time: float) -> None:
         """Track when an order is postponed."""
@@ -370,16 +355,17 @@ class RLPostponementDecision:
     def _decay_exploration_rate(self) -> None:
         """Decay exploration rate according to schedule."""
         self.exploration_rate = max(self.min_exploration_rate, 
-                                   self.exploration_rate * self.exploration_decay)
-    
-    def calculate_reward_from_delay(self, previous_delay: float, current_delay: float) -> float:
-        """
-        Calculate reward based on change in total delay.
-        """
-        return -(current_delay - previous_delay)
-    
+                                   self.exploration_rate * self.exploration_decay)  
+
     def save_model(self, path: str) -> None:
         """Save model checkpoint to disk."""
+        if path is None:
+            logger.warning("No save path provided, model not saved")
+            return
+            
+        # Create directory if it doesn't exist
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        
         checkpoint = {
             'model_state_dict': self.value_network.state_dict(),
             'optimizer_state_dict': self.optimizer.state_dict(),
@@ -387,8 +373,8 @@ class RLPostponementDecision:
             'total_training_steps': self.total_training_steps
         }
         torch.save(checkpoint, path)
-        # logger.info(f"Model saved to {path}")
-    
+        logger.info(f"Model saved to {path}")
+
     def load_model(self, path: str) -> None:
         """Load model checkpoint from disk."""
         checkpoint = torch.load(path)

@@ -80,6 +80,7 @@ def prepare_solver_input(state: State) -> dict:
                 "request_time": order.request_time,
                 "pickup_node_id": order.pickup_node_id,
                 "delivery_node_id": order.delivery_node_id,
+                "deadline": order.deadline,
             }
 
     # Add vehicle positions, needed for fastest vehicle sovler
@@ -147,7 +148,7 @@ def run_test_episode(
 ):
     # is_paused = False
     simulation_duration = simulation_duration = get_env_config(None)["simulation_duration"]  # 420
-    speed = 20   # 40.0 km/h in paper, 10kmh Durchschnitt in Meituan Daten
+    speed = 15   # 40.0 km/h in paper, 10kmh Durchschnitt in Meituan Daten, if also considering service time maybe about 15kmh
     street_network_factor = 1.0  # 1.4 in paper, we calculated the average speed over the euclidic distance, so no adjustment necessary
     movement_per_step = (speed / 60) / street_network_factor  # km per minute adjusted for street network
 
@@ -241,6 +242,36 @@ def run_test_episode(
 
         route_plan, postponed_orders = solver.solve(prepare_solver_input(state))
         next_state, reward, done, info = env.step((route_plan, postponed_orders))
+
+    # ------------------------- Reinfocement Learning -----------------------------
+        # Add RL model update if using RL-based solver
+        if solver_name == "rl_aca" and hasattr(solver, 'postponement') and hasattr(solver.postponement, 'update_from_rewards'):
+            # Reward Function
+            # Calculate previous total delay (from before the step)
+            previous_delay = sum([max(0, o.delivery_time - o.deadline) for o in state.orders if o.delivery_time is not None]) if state.orders else 0
+            # Calculate current total delay
+            current_delay = sum([max(0, o.delivery_time - o.deadline) for o in next_state.orders if o.delivery_time is not None]) if next_state.orders else 0
+            
+            # Calculate order-specific rewards
+            order_rewards = {}
+            for order_id in solver.postponement.current_episode_actions.keys():
+                # Base reward on overall system delay change
+                delay_change = current_delay - previous_delay
+                # Negative reward for increased delay, positive for decreased
+                base_reward = -delay_change
+                
+                # # Add order-specific adjustments
+                # if order_id in info.get("late_orders", set()):
+                #     # Additional penalty for orders that became late
+                #     base_reward -= 10.0
+                    
+                order_rewards[order_id] = base_reward
+            
+            # Update the RL model with these rewards
+            if order_rewards:
+                solver.postponement.update_from_rewards(order_rewards)
+
+    # ------------------------- Reinfocement Learning -----------------------------
 
         # Add restaurant tracking for all new orders in state
         for order in next_state.orders:
@@ -525,9 +556,38 @@ def run_test_episode(
         save_results(episode_stats, solver_name, seed, meituan_config, solver_params, env_params)
     
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    # Save RL model if requested
+    # In run_test_episode
+    # if save_rl_model and hasattr(solver, 'save_rl_model'):
+    #     logger.info(f"Received model path: {rl_model_path}")
+    #     model_save_path = rl_model_path if rl_model_path else os.path.join("data", "models", f"rl_aca_{timestamp}.pt")
+    #     logger.info(f"Using model path: {model_save_path}")
+        
+    #     # Ensure directory exists
+    #     dir_path = os.path.dirname(model_save_path)
+    #     os.makedirs(dir_path, exist_ok=True)
+        
+    #     solver.save_rl_model(model_save_path)
+    #     logger.info(f"RL model saved to {model_save_path}")
+
+
     if save_rl_model and hasattr(solver, 'save_rl_model'):
-        model_save_path = f"data/models/rl_aca_{timestamp}.pt" if rl_model_path is None else rl_model_path
+        # Log the received path
+        logger.info(f"Received model path: {rl_model_path}")
+        
+        # Only generate a new path if None was explicitly passed
+        if rl_model_path is None:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            model_save_path = os.path.join("data", "models", f"rl_aca_{timestamp}.pt")
+            logger.info(f"No path provided, using generated path: {model_save_path}")
+        else:
+            model_save_path = rl_model_path
+            logger.info(f"Using model path: {model_save_path}")
+        
+        # Ensure directory exists
+        dir_path = os.path.dirname(model_save_path)
+        os.makedirs(dir_path, exist_ok=True)
+        
+        # Save model
         solver.save_rl_model(model_save_path)
         logger.info(f"RL model saved to {model_save_path}")
 
@@ -881,7 +941,7 @@ def get_env_config(movement_per_step):
     return {
         # System size parameters
         "num_restaurants": 15,  # Production: 110 restaurants in system
-        "num_vehicles": 5,  # Production: 15 delivery vehicles
+        "num_vehicles": 15,  # Production: 15 delivery vehicles
         # Time parameters
         "mean_prep_time": 13.0,  # Gamma distributed preparation time (minutes) -> maybe should be Standard dist?
         "prep_time_var": 2.0,  # Preparation time variance (COV: 0.0-0.6)
@@ -889,14 +949,14 @@ def get_env_config(movement_per_step):
         "simulation_duration": 420,  # 420 # Total simulation time (minutes)
         "cooldown_duration": 0,  # No new orders in final period (minutes)
         # Workload parameters
-        "mean_interarrival_time": 2,  # Order frequency:
+        "mean_interarrival_time": 0.9,  # Order frequency:
         # Andersrum??, kleinere interarrival time = mehr Orders ...
         # Light: 1.5 orders/hr/vehicle (180 total)
         # Normal: 2.0 orders/hr/vehicle (240 total)
         # Heavy: 2.5 orders/hr/vehicle (300 total)
         # Here: 60/(2.5 orders/hr/vehicle * 15 vehicles)
         # Area parameters
-        "service_area_dimensions": (10.0, 10.0),  # 10km x 10km area
+        "service_area_dimensions": (4.0, 4.0),  # 10km x 10km area
         "downtown_concentration": 0.7,  # Restaurant concentration downtown
         # Service parameters
         "service_time": 2.0,  # Time at pickup/delivery locations
@@ -939,8 +999,8 @@ SOLVERS = {
         mean_prep_time=13,
         delivery_window=40.0,
         # Use RL-based postponement
-        postponement_method="rl", # rl
-        rl_training_mode=True,
+        postponement_method="rl",  # rl
+        rl_training_mode=True,  # Change this to False for evaluation
         rl_state_size=10,
     ),
     "bundler": lambda s, loc_manager: FastestBundler(
@@ -970,11 +1030,11 @@ custom_config = MeituanDataConfig(
 if __name__ == "__main__":
     logger.info("Starting test episode...")
     stats = run_test_episode(
-        solver_name="aca",
+        solver_name="rl_aca",
         meituan_config=custom_config,
         seed=1,
         reposition_idle_vehicles=False,
-        visualize=True,
+        visualize=False,
         warmup_duration=0,
     )
     logger.info("\nTest completed!")

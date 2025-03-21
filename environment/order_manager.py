@@ -55,7 +55,8 @@ class OrderManager:
 
     def generate_new_orders(self, current_time: float, restaurants: List[Node]) -> None:
         """
-        Generate new orders based on simulation time
+        Generate new orders based on simulation time, allowing multiple orders per timestep
+        when interarrival time is small
         """
         # Check if we have an OrderGenerator
         if hasattr(self, 'order_generator'):
@@ -71,7 +72,8 @@ class OrderManager:
         
         # Otherwise use the basic Poisson process
         else:
-            if current_time >= self.next_order_time:
+            # Generate all orders that should arrive by the current time
+            while current_time >= self.next_order_time:
                 # Use OrderGenerator for even the basic Poisson process
                 if not hasattr(self, '_basic_generator'):
                     # Create basic OrderGenerator for default generation
@@ -84,16 +86,22 @@ class OrderManager:
                         prep_time_var=self.prep_time_var
                     )
                 
-                # Generate orders and extend active_orders list with any new orders
-                new_orders = self._basic_generator.generate_orders(current_time, restaurants)
+                # Generate an order at the exact next_order_time (not at current_time)
+                new_orders = self._basic_generator.generate_orders(self.next_order_time, restaurants)
                 if new_orders:  # Check that orders were actually generated
                     self.active_orders.extend(new_orders)
                     
                     # Sync the next_order_id
                     self.next_order_id = self._basic_generator.next_order_id
-                    
-                # Set next order time regardless of whether an order was generated
-                self.next_order_time = current_time + np.random.exponential(self.mean_interarrival_time)
+                
+                # Calculate next order time based on exponential distribution
+                next_interval = np.random.exponential(self.mean_interarrival_time)
+                self.next_order_time += next_interval
+                
+                # Optional: Add logging to track order generation
+                # logger.debug(f"Generated order at {self.next_order_time-next_interval}, next order in {next_interval} min")
+
+
 
     def reset(self) -> None:
         """Reset the order manager state"""

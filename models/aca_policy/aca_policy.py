@@ -90,8 +90,6 @@ class ACA:
             logger.info("Using heuristic-based postponement method")
         else:  # "rl"
             self.postponement = RLPostponementDecision(
-                max_postponements=max_postponements,
-                max_postpone_time=max_postpone_time,
                 training_mode=rl_training_mode,
                 state_size=rl_state_size,
             )

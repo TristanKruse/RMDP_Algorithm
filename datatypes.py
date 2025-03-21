@@ -19,7 +19,7 @@ class Node:
 @dataclass
 class Order:
     id: int  # pickup, delivery & reposition
-    request_time: float
+    request_time: float 
     pickup_node_id: Node  # Restaurant node ID
     delivery_node_id: Node  # Customer node ID (dynamically created) -> when order is created!!!
     deadline: float

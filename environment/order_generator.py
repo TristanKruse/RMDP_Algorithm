@@ -67,49 +67,6 @@ class OrderGenerator:
         if mode == "replay" and real_orders_df is not None:
             self._preprocess_real_orders()
 
-    # def _preprocess_real_orders(self):
-    #     """Prepare real order data for replay with actual deadlines"""
-    #     # Sort by order time
-    #     self.real_orders_df = self.real_orders_df.sort_values('order_push_time')
-        
-    #     # Store simulation reference time (first order time)
-    #     self.simulation_start_time = self.real_orders_df['order_push_time'].min()
-    #     logger.info(f"Generator simulation start time: {self.simulation_start_time}")
-        
-    #     # Check that our delivery window column exists
-    #     if 'delivery_window_minutes' not in self.real_orders_df.columns:
-    #         logger.warning("No 'delivery_window_minutes' column found - will use default delivery window")
-    #     else:
-    #         valid_windows = self.real_orders_df['delivery_window_minutes'].dropna()
-    #         logger.info(f"Found {len(valid_windows)} orders with valid delivery windows")
-    #         logger.info(f"Average delivery window: {valid_windows.mean():.1f} minutes")
-        
-    #     # Check that our prep time column exists
-    #     if 'prep_time_minutes' not in self.real_orders_df.columns:
-    #         logger.warning("No 'prep_time_minutes' column found - will use default prep time")
-    #     else:
-    #         valid_prep = self.real_orders_df['prep_time_minutes'].dropna()
-    #         logger.info(f"Found {len(valid_prep)} orders with valid prep times")
-    #         logger.info(f"Average prep time: {valid_prep.mean():.1f} minutes")
-        
-    #     # Convert timestamps to simulation time (minutes from start)
-    #     if isinstance(self.simulation_start_time, pd.Timestamp):
-    #         logger.info("Converting datetime timestamps to simulation minutes")
-    #         # Convert order creation time to simulation minutes
-    #         self.real_orders_df['sim_time'] = (self.real_orders_df['order_push_time'] - 
-    #                                         self.simulation_start_time).dt.total_seconds() / 60
-    #     else:
-    #         # Handle numeric timestamps
-    #         logger.info("Converting numeric timestamps to simulation minutes")
-    #         self.real_orders_df['sim_time'] = self.real_orders_df['order_push_time'] - self.simulation_start_time
-            
-    #     # Reset index to access by position
-    #     self.real_orders_df = self.real_orders_df.reset_index(drop=True)
-
-    #     # Log order distribution
-    #     # logger.info(f"Loaded {len(self.real_orders_df)} orders spanning {self.real_orders_df['sim_time'].max():.1f} simulation minutes")
-
-
     def _preprocess_real_orders(self):
         """Prepare real order data for replay with actual deadlines"""
         # Sort by order time
@@ -142,36 +99,30 @@ class OrderGenerator:
         """
         if self.mode == "replay" and current_time % 10 == 0:  # Log every 10 minutes
             next_idx = self.real_order_index if self.real_order_index < len(self.real_orders_df) else len(self.real_orders_df)-1
-            # logger.info(f"Current time: {current_time}, next order at sim_time: {self.real_orders_df['sim_time'].iloc[next_idx] if next_idx >= 0 else 'none'}")
-            # logger.info(f"Orders processed so far: {self.real_order_index}/{len(self.real_orders_df)}")
+            # logger.info(f"Current time: {current_time}, next order at sim_time...")
 
         new_orders = []
         
         if self.mode == "default":
             # Default Poisson process
-            if current_time >= self.next_order_time:
-                new_orders.append(self._generate_random_order(current_time, restaurants))
-                self.next_order_time = current_time + np.random.exponential(self.mean_interarrival_time)
-                
+            # Just generate one order at the exact time requested
+            new_orders.append(self._generate_random_order(current_time, restaurants))
+            
         elif self.mode == "pattern":
-            # Time-varying Poisson process
-            if current_time >= self.next_order_time:
-                # Calculate hour of day (0-23)
-                hour = int((current_time / 60.0) % 24)
-                
-                # Get rate multiplier for current hour
-                hourly_rate = self.temporal_pattern.get(hour, 1.0)
-                
-                # Adjust interarrival time based on hourly rate
-                adjusted_interarrival = self.mean_interarrival_time / max(0.01, hourly_rate)
-                
-                new_orders.append(self._generate_random_order(current_time, restaurants))
-                self.next_order_time = current_time + np.random.exponential(adjusted_interarrival)
-                
+            # Time-varying Poisson process - generate one order
+            # Calculate hour of day (0-23)
+            hour = int((current_time / 60.0) % 24)
+            
+            # Get rate multiplier for current hour
+            hourly_rate = self.temporal_pattern.get(hour, 1.0)
+            
+            # Generate the order
+            new_orders.append(self._generate_random_order(current_time, restaurants))
+            
         elif self.mode == "replay":
-            # Replay real orders
+            # Replay real orders (this already handles multiple orders)
             while (self.real_order_index < len(self.real_orders_df) and 
-                   self.real_orders_df.loc[self.real_order_index, 'sim_time'] <= current_time):
+                self.real_orders_df.loc[self.real_order_index, 'sim_time'] <= current_time):
                 
                 # Get the real order data
                 order_row = self.real_orders_df.iloc[self.real_order_index]
@@ -184,6 +135,14 @@ class OrderGenerator:
                 self.real_order_index += 1
         
         return new_orders
+
+
+
+
+
+
+
+
     
     def _generate_random_order(self, current_time, restaurants):
         """Generate a random order"""
