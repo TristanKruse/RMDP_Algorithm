@@ -48,7 +48,7 @@ class ACA:
         # RL parameters
         postponement_method: str = "heuristic",  # "heuristic" or "rl"
         rl_training_mode: bool = True,
-        rl_state_size: int = 10,
+        rl_state_size: int = 6,
         rl_model_path: str = None,
     ):
         self.buffer = buffer
@@ -303,7 +303,6 @@ class ACA:
         """Save the RL model to the specified path."""
         if hasattr(self, 'postponement') and hasattr(self.postponement, 'save_model'):
             self.postponement.save_model(path)
-            logger.info(f"RL model saved to {path}")
             return True
         return False
     

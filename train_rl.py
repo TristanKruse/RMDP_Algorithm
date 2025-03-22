@@ -22,7 +22,7 @@ def train_rl_aca(
     phases: List[Dict],
     save_interval: int = 20,
     stability_window: int = 10,       # Window for stability assessment
-    stability_threshold: float = 3.0,  # Max percent change considered stable
+    stability_threshold: float = 3.0, # Max percent change considered stable
     seed: int = 1,
     visualize: bool = False,
     reposition_idle_vehicles: bool = False,
@@ -151,13 +151,20 @@ def train_rl_aca(
                 all_metrics["postponement_rates"].append(postponement_rate)
                 
                 # Update progress bar with key metrics
+                # pbar.set_postfix({
+                #     'reward': f"{reward:.2f}", 
+                #     'on-time': f"{on_time_rate:.1f}%",
+                #     'delay': f"{delay:.1f}",
+                #     'seed': f"{seed}",
+                #     'postponed': f"{postponement_rate:.1f}%"
+                # })
                 pbar.set_postfix({
-                    'reward': f"{reward:.2f}", 
-                    'on-time': f"{on_time_rate:.1f}%",
-                    'delay': f"{delay:.1f}",
+                    'reward': f"{reward:.2f}".ljust(10), 
+                    'on-time': f"{on_time_rate:.1f}%".ljust(10),
+                    'delay': f"{delay:.1f}".ljust(8),
                     # 'seed': f"{seed + episode_in_phase}",
-                    'seed': f"{seed}",
-                    'postponed': f"{postponement_rate:.1f}%"
+                    'seed': f"{seed}".ljust(6),
+                    'postponed': f"{postponement_rate:.1f}%".ljust(8)
                 })
                 pbar.update(1)
                 
@@ -709,8 +716,8 @@ def define_training_phases():
             "performance_criteria": {
                 # No performance criteria - phase will run until max_episodes
             },
-            "min_episodes": 20, # 20, 50
-            "max_episodes": 500    # More episodes for initial learning
+            "min_episodes": 20, 
+            "max_episodes": 600    # More episodes for initial learning
         },
         
         # Phase 2: Intermediate Environment

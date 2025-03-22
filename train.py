@@ -245,31 +245,47 @@ def run_test_episode(
 
     # ------------------------- Reinfocement Learning -----------------------------
         # Add RL model update if using RL-based solver
-        if solver_name == "rl_aca" and hasattr(solver, 'postponement') and hasattr(solver.postponement, 'update_from_rewards'):
+        # if solver_name == "rl_aca" and hasattr(solver, 'postponement') and hasattr(solver.postponement, 'update_from_rewards'):
             # Reward Function
             # Calculate previous total delay (from before the step)
-            previous_delay = sum([max(0, o.delivery_time - o.deadline) for o in state.orders if o.delivery_time is not None]) if state.orders else 0
-            # Calculate current total delay
-            current_delay = sum([max(0, o.delivery_time - o.deadline) for o in next_state.orders if o.delivery_time is not None]) if next_state.orders else 0
+            # previous_delay = sum([max(0, o.delivery_time - o.deadline) for o in state.orders if o.delivery_time is not None]) if state.orders else 0
+            # # Calculate current total delay
+            # current_delay = sum([max(0, o.delivery_time - o.deadline) for o in next_state.orders if o.delivery_time is not None]) if next_state.orders else 0
             
-            # Calculate order-specific rewards
+            # # Calculate order-specific rewards
+            # order_rewards = {}
+            # for order_id in solver.postponement.current_episode_actions.keys():
+            #     # Base reward on overall system delay change
+            #     delay_change = current_delay - previous_delay
+            #     # Negative reward for increased delay, positive for decreased
+            #     base_reward = -delay_change
+                
+            #     # # Add order-specific adjustments
+            #     # if order_id in info.get("late_orders", set()):
+            #     #     # Additional penalty for orders that became late
+            #     #     base_reward -= 10.0
+                    
+            #     order_rewards[order_id] = base_reward
+            
+            # # Update the RL model with these rewards
+            # if order_rewards:
+            #     solver.postponement.update_from_rewards(order_rewards)
+
+        if solver_name == "rl_aca" and hasattr(solver, 'postponement') and hasattr(solver.postponement, 'update_from_rewards'):
+            # Reward Function
+            previous_delay = sum([max(0, o.delivery_time - o.deadline) for o in state.orders if o.delivery_time is not None]) or 0
+            current_delay = sum([max(0, o.delivery_time - o.deadline) for o in next_state.orders if o.delivery_time is not None]) or 0
+            delay_change = current_delay - previous_delay
+            base_reward = -delay_change
+            
             order_rewards = {}
             for order_id in solver.postponement.current_episode_actions.keys():
-                # Base reward on overall system delay change
-                delay_change = current_delay - previous_delay
-                # Negative reward for increased delay, positive for decreased
-                base_reward = -delay_change
-                
-                # # Add order-specific adjustments
-                # if order_id in info.get("late_orders", set()):
-                #     # Additional penalty for orders that became late
-                #     base_reward -= 10.0
-                    
                 order_rewards[order_id] = base_reward
             
-            # Update the RL model with these rewards
             if order_rewards:
-                solver.postponement.update_from_rewards(order_rewards)
+                solver.postponement.update_from_rewards(order_rewards, next_state_dict=prepare_solver_input(next_state))
+
+
 
     # ------------------------- Reinfocement Learning -----------------------------
 
@@ -572,16 +588,13 @@ def run_test_episode(
 
     if save_rl_model and hasattr(solver, 'save_rl_model'):
         # Log the received path
-        logger.info(f"Received model path: {rl_model_path}")
         
         # Only generate a new path if None was explicitly passed
         if rl_model_path is None:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             model_save_path = os.path.join("data", "models", f"rl_aca_{timestamp}.pt")
-            logger.info(f"No path provided, using generated path: {model_save_path}")
         else:
             model_save_path = rl_model_path
-            logger.info(f"Using model path: {model_save_path}")
         
         # Ensure directory exists
         dir_path = os.path.dirname(model_save_path)
@@ -589,7 +602,6 @@ def run_test_episode(
         
         # Save model
         solver.save_rl_model(model_save_path)
-        logger.info(f"RL model saved to {model_save_path}")
 
     return episode_stats
 
@@ -1001,7 +1013,7 @@ SOLVERS = {
         # Use RL-based postponement
         postponement_method="rl",  # rl
         rl_training_mode=True,  # Change this to False for evaluation
-        rl_state_size=10,
+        rl_state_size=6,
     ),
     "bundler": lambda s, loc_manager: FastestBundler(
         movement_per_step=s,

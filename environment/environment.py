@@ -75,11 +75,13 @@ class RestaurantMealDeliveryEnv:
             movement_per_step,
             downtown_concentration,
         )
+
         self.vehicle_manager = VehicleManager(
             num_vehicles,
             service_area_dimensions,
             vehicle_capacity,
         )
+
         self.order_manager = OrderManager(
             mean_prep_time,
             prep_time_var,
@@ -91,13 +93,13 @@ class RestaurantMealDeliveryEnv:
             simulation_duration=simulation_duration,  # Pass simulation duration
         )
 
-
         self.route_processor = RouteProcessor(
             service_time=service_time, location_manager=self.location_manager, 
             movement_per_step=movement_per_step, 
             reposition_idle_vehicles=reposition_idle_vehicles ,
             vehicle_manager=self.vehicle_manager
         )
+        
         self.state_handler = StateHandler(num_vehicles=num_vehicles)
 
         self.viz_manager = (
@@ -178,10 +180,6 @@ class RestaurantMealDeliveryEnv:
         # 10. Time step and return results
         self.current_time += 1
         return new_state, reward, self.current_time >= self.simulation_duration, step_metrics
-    
-
-
-
 
     def _setup_initial_visualization(self):
         if self.viz_manager:

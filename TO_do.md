@@ -11,23 +11,20 @@
 
 
 #  Converging, Training verbessern RL:
-1. Versuchen ohne Seed, dann converging?
 
-look into:
--> large neighbourhood search (schauen entsprechend, ob estimate_value dann noch gebraucht wird.)
--> Metaparameter setzen, vor allem exploratory parameter checken, was ist reasonalble
-(Wissenschaftlich begründbar machen, die Hyperparameter und die Episoden)
+
+
+- Ontime wird nicht mehr richtig ausgegeben.
+
+- teilweise positiven reward, generell nachdenken, ab wann updates immer Sinn ergeben, ggf. immer wenn eine Order delivered wurde anstelle von nach jedem Timestep??? 
+
+
+2. collect pros and cons for different architectures and maybe redo them.
 
 - vielleicht interessant zu Untersuchen previous postponements, postponement ratio.
-
 Go through each of these points:
-2. Exploration vs. Exploitation: The exploration_rate parameter controls how often random actions are taken. Make sure it's not too low (no exploration) or too high (no exploitation).
 3. Batch Size: The batch_size parameter in _update_model determines how many experiences are used in each update. If it's too small, learning can be unstable.
-4. Learning Rate: The learning_rate parameter passed to the optimizer affects how quickly the model adapts. If it's too high, learning can be unstable; if too low, learning can be very slow.
 5. Replay Buffer Size: Make sure the replay buffer is large enough to store a diverse set of experiences.
-
-
-
 
 
 ASK CLAUDE:
@@ -35,11 +32,11 @@ For the large neighbourhood search I was thinking more about the state features,
 target = reward + discount_factor * max_future_value -> miteinbeziehen? gerade angeblich target = reward (kein long term learning.)
 ->Deep RL to learn important features???
 
+-> wieder hinzufügen randomisierter Seeds, 
+
 2. multi objective Function erstellen:
 - Einen Simplen und einen der eine komplexere hat, dann vergleichen, sicherstellen, dass man switchen kann und das beide gespeichert werden
 ->multi objective: idle rate, total travel, total delay
-
-
 
 
 -> Bundling Bonus -> aber gleichzeitig sicherstellen, dass gutes Bundling also irgendwie total travel time reduzieren.
@@ -71,7 +68,7 @@ Notes:
 ->Wichtig auch, accuracy von mean prep time und deadline, (es geht, ggf. nochmal dispatch to dispatch anschauen.)
 ->Travel speeds differ significantly based on time of day, -> see analysis -> dispatch to dispatch mean ca. 9.5 -> Haversine distance (along earth not euclidean) -> taking this and then without the service time, to get an accurate speed.
 ->exploration biased towards not postponeing (90 % of time choses not to postpone)
-
+->ohne Seed converged auch nicht.
 
 
 # ACA
