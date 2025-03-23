@@ -158,6 +158,7 @@ def train_rl_aca(
                 #     'seed': f"{seed}",
                 #     'postponed': f"{postponement_rate:.1f}%"
                 # })
+                
                 pbar.set_postfix({
                     'reward': f"{reward:.2f}".ljust(10), 
                     'on-time': f"{on_time_rate:.1f}%".ljust(10),

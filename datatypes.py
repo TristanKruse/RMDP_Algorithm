@@ -33,6 +33,7 @@ class Order:
     expected_prep_time: float = None  # Expected preparation time when order created
     actual_prep_time: float = None  # Actual preparation time based on when order was ready
     driver_wait_time: float = 0.0  # How long driver waited for the order
+    current_delay: float = 0.0  # Current delay of the order
 
 
 @dataclass

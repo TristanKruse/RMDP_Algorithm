@@ -42,21 +42,19 @@ class ReplayBuffer:
         return len(self.buffer)
 
 
+# Double DQN
 class PostponementValueNetwork(nn.Module):
-    """Neural network for value function approximation in the postponement decision."""
-    
-    def __init__(self, input_size, hidden_size=64):
-        super(PostponementValueNetwork, self).__init__()
-        self.fc1 = nn.Linear(input_size, hidden_size)
-        self.fc2 = nn.Linear(hidden_size, hidden_size)
-        self.fc3 = nn.Linear(hidden_size, 1)  # Single output: estimated value of state-action
-        
-    def forward(self, x):
-        # When calling self.value_network(x), this method is automatically executed by PyTorch
-        x = torch.relu(self.fc1(x))
-        x = torch.relu(self.fc2(x))
-        return self.fc3(x)
+    def __init__(self, input_size, hidden_size=128):
+        super().__init__()
+        self.fc_shared = nn.Linear(input_size, hidden_size)
+        self.fc_value = nn.Linear(hidden_size, 1)
+        self.fc_advantage = nn.Linear(hidden_size, 2)
 
+    def forward(self, x):
+        x = torch.relu(self.fc_shared(x))
+        value = self.fc_value(x)
+        advantage = self.fc_advantage(x)
+        return value + (advantage - advantage.mean(dim=1, keepdim=True))
 
 class RLPostponementDecision:
     """
@@ -90,7 +88,7 @@ class RLPostponementDecision:
         self.batch_size = batch_size
         
         # Initialize neural network and optimizer
-        self.value_network = PostponementValueNetwork(state_size + 1)  # +1 for action
+        self.value_network = PostponementValueNetwork(state_size)  # No +1, action not in input
         self.optimizer = optim.Adam(self.value_network.parameters(), lr=learning_rate)
         self.criterion = nn.MSELoss()
         
@@ -106,7 +104,6 @@ class RLPostponementDecision:
         self.episode_rewards = []
         self.total_training_steps = 0
         self.batch_losses = []
-
         # Add tracking for next states
         self.current_episode_next_states = {}  # order_id -> next_state tensor after action
     
@@ -214,27 +211,6 @@ class RLPostponementDecision:
 
         return torch.tensor(features, dtype=torch.float32)
     
-    def estimate_value(self, state_tensor: torch.Tensor, action: int) -> float:
-        """
-        Estimate the value of a state-action pair using the value network.
-        
-        Args:
-            state_tensor: Tensor of state features
-            action: The action (0 = don't postpone, 1 = postpone)
-            
-        Returns:
-            Estimated value of the state-action pair
-        """
-        # Concatenate state features with action
-        action_tensor = torch.tensor([float(action)], dtype=torch.float32)
-        state_action = torch.cat([state_tensor, action_tensor])
-        
-        # Pass through value network
-        with torch.no_grad():
-            value = self.value_network(state_action.unsqueeze(0)).item()
-        
-        return value
-    
     def evaluate_postponement(
         self,
         postponed: Set[int],
@@ -267,33 +243,58 @@ class RLPostponementDecision:
         
         return should_postpone
         
-    def _greedy_action_selection(  
-        self, 
-        state_tensor: torch.Tensor, 
-    ) -> bool:
+    def estimate_value(self, state_tensor: torch.Tensor, action: int) -> float:
+        with torch.no_grad():
+            q_values = self.value_network(state_tensor.unsqueeze(0))  # [1, 2]
+            return q_values[0, action].item()
 
-        # Evaluate both options (postpone vs. don't postpone)
-        postpone_value = self.estimate_value(state_tensor, 1)
-        dont_postpone_value = self.estimate_value(state_tensor, 0)
-        
-        # Return action with higher estimated value
-        return postpone_value > dont_postpone_value
+    def _greedy_action_selection(self, state_tensor: torch.Tensor) -> bool:
+        with torch.no_grad():
+            q_values = self.value_network(state_tensor.unsqueeze(0))  # [1, 2]
+            return q_values.argmax().item() == 1  # 1 if postpone has higher Q-value
+
+    def _update_model(self) -> float:
+        if len(self.replay_buffer) < self.batch_size:
+            return 0.0
+
+        batch = self.replay_buffer.sample(self.batch_size)
+        states, actions, rewards, next_states, dones = zip(*batch)
+
+        states = torch.cat(states)  # [batch_size, state_size]
+        actions = torch.tensor(actions, dtype=torch.long)  # [batch_size]
+        rewards = torch.tensor(rewards, dtype=torch.float32)
+        next_states = torch.cat(next_states)
+        dones = torch.tensor(dones, dtype=torch.float32)
+
+        # Current Q-values for taken actions
+        q_values = self.value_network(states)  # [batch_size, 2]
+        current_q = q_values.gather(1, actions.unsqueeze(1)).squeeze(1)  # [batch_size]
+
+        # Target Q-values
+        with torch.no_grad():
+            next_q_values = self.value_network(next_states)  # [batch_size, 2]
+            max_next_q = next_q_values.max(dim=1)[0]  # [batch_size]
+            targets = rewards + self.discount_factor * max_next_q * (1 - dones)
+
+        loss = self.criterion(current_q, targets)
+        self.optimizer.zero_grad()
+        loss.backward()
+        self.optimizer.step()
+
+        self.total_training_steps += 1
+        self.batch_losses.append(loss.item())
+        return loss.item
 
     def update_from_rewards(self, rewards: Dict[int, float], next_state_dict: dict) -> float:
         if not self.training_mode or not self.current_episode_states:
             return 0.0
-        
-        # Add experiences to replay buffer with next states
+
         for order_id in self.current_episode_states.keys():
             if order_id in self.current_episode_actions and order_id in rewards:
-                state_tensor = self.current_episode_states[order_id]
+                state_tensor = self.current_episode_states[order_id]  # [6]
                 action = self.current_episode_actions[order_id]
                 reward = rewards[order_id]
-                
-                action_tensor = torch.tensor([float(action)], dtype=torch.float32)
-                state_action = torch.cat([state_tensor, action_tensor]).unsqueeze(0)
-                
-                # Compute next state
+
                 if order_id in next_state_dict["unassigned_orders"]:
                     next_state_tensor = self.extract_state_features(
                         order_id, next_state_dict["route_plan"], next_state_dict["time"], next_state_dict
@@ -302,50 +303,14 @@ class RLPostponementDecision:
                 else:
                     next_state_tensor = torch.zeros_like(state_tensor)
                     done = True
-                
-                next_state_action = torch.cat([next_state_tensor, action_tensor]).unsqueeze(0)
-                self.replay_buffer.add(state_action, action, reward, next_state_action, done)
-        
+
+                self.replay_buffer.add(state_tensor.unsqueeze(0), action, reward, next_state_tensor.unsqueeze(0), done)
+
         loss = self._update_model()
-        
         self.current_episode_states = {}
         self.current_episode_actions = {}
         self._decay_exploration_rate()
         return loss
-
-    def _update_model(self) -> float:
-        if len(self.replay_buffer) < self.batch_size:
-            return 0.0
-
-        batch = self.replay_buffer.sample(self.batch_size)
-        states, actions, rewards, next_states, dones = zip(*batch)
-        
-        # Convert to tensors
-        states = torch.cat(states)
-        actions = torch.tensor(actions, dtype=torch.float32)
-        rewards = torch.tensor(rewards, dtype=torch.float32)
-        next_states = torch.cat(next_states)
-        dones = torch.tensor(dones, dtype=torch.float32)
-        
-        # Calculate current values
-        current_values = self.value_network(states).squeeze()
-        
-        # Calculate TD target: reward + γ * V(next_state) * (1 - done)
-        with torch.no_grad():
-            next_values = self.value_network(next_states).squeeze()
-            targets = rewards + self.discount_factor * next_values * (1 - dones)
-        
-        # Calculate loss
-        loss = self.criterion(current_values, targets)
-        
-        # Update model
-        self.optimizer.zero_grad()
-        loss.backward()
-        self.optimizer.step()
-        
-        self.total_training_steps += 1
-        self.batch_losses.append(loss.item())
-        return loss.item
 
     def _decay_exploration_rate(self) -> None:
         """Decay exploration rate according to schedule."""

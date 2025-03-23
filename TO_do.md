@@ -9,22 +9,33 @@
     IV. Multiple Objective value fucntion
 4. Ergebnisse aufschreiben, Graphen etc.
 
-
 #  Converging, Training verbessern RL:
 
 
-
-- Ontime wird nicht mehr richtig ausgegeben.
-
-- teilweise positiven reward, generell nachdenken, ab wann updates immer Sinn ergeben, ggf. immer wenn eine Order delivered wurde anstelle von nach jedem Timestep??? 
+- verstehen, wie genau Rewards berechnet wird und weitergegeben wird, reward war teilweise positiv, sollte eigentlich entweder Null sein oder negativ.
+Reward tuning, vielleicht schauen, nicht proportionale rewards, -> irgendwo positiv? ggf. lernen wir in die falsche Richtung.
 
 
-2. collect pros and cons for different architectures and maybe redo them.
 
-- vielleicht interessant zu Untersuchen previous postponements, postponement ratio.
-Go through each of these points:
+2. collect pros and cons for different architectures and maybe redo them. -> more research, what rl-model to choose (Deep-Q Network/Double Deep Q, Soft Actor cirtic, vfa mit large neighbourhood, ...)
+
+
+-> Problem temporal difference diconnect
+
+- replay buffer verstehen
+
+
+
+- vielleicht interessant zu Untersuchen previous postponements, postponement ratio & v.a. Anzahl Bundling (bspw. zweimal hintereinander customer, dann gebunddlet, als ein Bundle gezählt + Größe der Bundle messen) -> in Lernmetriken, die am Ende ausgegeben werden+
+
+2. Visualisieren des Lernprozesses nochmal, 
+(weaknesses und Anpassungen durchführen.)
+
+3. -> dann für eine entscheiden und 
+
 3. Batch Size: The batch_size parameter in _update_model determines how many experiences are used in each update. If it's too small, learning can be unstable.
 5. Replay Buffer Size: Make sure the replay buffer is large enough to store a diverse set of experiences.
+-> check replay buffer logik, ergibt das so Sinn?
 
 
 ASK CLAUDE:
