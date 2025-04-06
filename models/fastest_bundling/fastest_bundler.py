@@ -76,6 +76,7 @@ class FastestBundler:
                                 vehicle_id=vehicle_id, sequence=new_sequence, total_distance=0.0, total_time=0.0
                             )
 
+        logger.info(f"Current route_plan, after solving{route_plan}")
         return route_plan, set()
 
     def _calculate_travel_time(self, loc1: Location, loc2: Location) -> float:

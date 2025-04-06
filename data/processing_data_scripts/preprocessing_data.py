@@ -437,7 +437,7 @@ def analyze_meal_prep_times(df, output_dir):
     
     # Calculate prep time (in minutes)
     valid_times = processed_df[processed_df['platform_order_time'].notna() & 
-                           processed_df['estimate_meal_prepare_time'].notna()]
+                               processed_df['estimate_meal_prepare_time'].notna()]
     
     if len(valid_times) == 0:
         print("Warning: No valid data for meal prep time calculation")

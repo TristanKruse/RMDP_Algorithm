@@ -18,6 +18,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
 def train_rl_aca(
     phases: List[Dict],
     save_interval: int = 20,
@@ -30,6 +31,10 @@ def train_rl_aca(
     resume_from_model: str = None,    # Support resuming
     start_phase: int = 0,             # Phase to start from when resuming
     start_episode: int = 0,           # Episode to start from when resuming
+    exploration_start: float = 0.9,   # Initial exploration rate
+    exploration_end: float = 0.01,     # Final exploration rate
+    decay_method: str = "exponential",     # "linear" or "exponential"
+    decay_rate: float = 0.995         # For exponential decay
 ):
     """
     Train the RL-based ACA solver through multiple progressive phases.
@@ -62,6 +67,12 @@ def train_rl_aca(
         "on_time_rates": [],
         "postponement_rates": []
     }
+
+    # Initialize exploration rate at the start
+    current_exploration_rate = exploration_start
+    
+    # Calculate total episodes across all phases
+    max_total_episodes = sum(phase.get("max_episodes", 100) for phase in phases)
     
     # If resuming, attempt to load metrics from previous runs
     if resume_from_model:
@@ -79,7 +90,8 @@ def train_rl_aca(
     
     # Training loop through phases
     current_phase_idx = start_phase
-    
+    total_completed_episodes = 0  # For exploration rate
+
     while current_phase_idx < len(phases):
         current_phase = phases[current_phase_idx]
         phase_name = current_phase.get("name", f"Phase {current_phase_idx + 1}")
@@ -114,18 +126,34 @@ def train_rl_aca(
                     logger.info(f"Starting phase with model: {current_model_path}")
                 else:
                     logger.info(f"Using model: {latest_model_path}")
-                
+      
+                # Update exploration rate based on selected decay method (continuous across phases)
+                if decay_method == "linear":
+                    progress = total_completed_episodes / max_total_episodes
+                    current_exploration_rate = max(
+                        exploration_end,
+                        exploration_start - (exploration_start - exploration_end) * progress
+                    )
+                elif decay_method == "exponential":
+                    # If this is not the first episode, apply exponential decay
+                    if current_phase_idx > 0 or episode_in_phase > 0:
+                        current_exploration_rate = max(
+                            exploration_end,
+                            current_exploration_rate * decay_rate
+                        )
+
                 # Run test episode - always save to the same latest model path
                 stats = run_test_episode(
                     solver_name="rl_aca",
-                    # seed=seed + episode_in_phase,  # Different seed each episode for diversity
-                    seed=seed,  # Different seed each episode for diversity
+                    seed=seed + episode_in_phase,  # Different seed each episode for diversity
+                    # seed=seed,
                     reposition_idle_vehicles=reposition_idle_vehicles,
                     visualize=visualize and episode_in_phase % 20 == 0,
                     save_rl_model=True,
                     rl_model_path=latest_model_path,  # Always use the latest model path
                     save_results_to_disk=False,
-                    env_config=env_config
+                    env_config=env_config,
+                    exploration_rate=current_exploration_rate 
                 )
                 
                 # Update metrics
@@ -150,21 +178,14 @@ def train_rl_aca(
                 all_metrics["on_time_rates"].append(on_time_rate)
                 all_metrics["postponement_rates"].append(postponement_rate)
                 
-                # Update progress bar with key metrics
-                # pbar.set_postfix({
-                #     'reward': f"{reward:.2f}", 
-                #     'on-time': f"{on_time_rate:.1f}%",
-                #     'delay': f"{delay:.1f}",
-                #     'seed': f"{seed}",
-                #     'postponed': f"{postponement_rate:.1f}%"
-                # })
-                
+                # Update progress bar with key metrics             
                 pbar.set_postfix({
                     'reward': f"{reward:.2f}".ljust(10), 
                     'on-time': f"{on_time_rate:.1f}%".ljust(10),
                     'delay': f"{delay:.1f}".ljust(8),
-                    # 'seed': f"{seed + episode_in_phase}",
-                    'seed': f"{seed}".ljust(6),
+                    'seed': f"{seed + episode_in_phase}",
+                    # 'seed': f"{seed}".ljust(6),
+                    'explore': f"{current_exploration_rate:.3f}".ljust(8),  # Add exploration rate
                     'postponed': f"{postponement_rate:.1f}%".ljust(8)
                 })
                 pbar.update(1)
@@ -245,7 +266,8 @@ def train_rl_aca(
                 
                 # Increment episode counter
                 episode_in_phase += 1
-        
+                total_completed_episodes += 1  # Increment total completed episodes
+
         # Move to next phase
         current_phase_idx += 1
         start_episode = 0  # Reset episode counter for next phase
@@ -345,108 +367,142 @@ def check_phase_criteria(
     return True, "All criteria met"
 
 def plot_phase_results(metrics, phase_idx, phase_name, output_dir, timestamp):
-    """Plot results for a single training phase."""
+    """Plot results for a single training phase with trend lines."""
     plt.figure(figsize=(15, 10))
     
+    # Number of episodes for x-axis
+    episodes = np.arange(len(metrics["rewards"]))
+
     # Plot rewards
     plt.subplot(2, 2, 1)
-    plt.plot(metrics["rewards"])
+    plt.plot(episodes, metrics["rewards"], label="Rewards")
+    # Add trend line
+    z = np.polyfit(episodes, metrics["rewards"], 1)
+    p = np.poly1d(z)
+    plt.plot(episodes, p(episodes), "r--", label=f"Trend (slope={z[0]:.2f})")
     plt.title(f"Phase {phase_idx + 1}: {phase_name} - Rewards")
     plt.xlabel("Episode")
     plt.ylabel("Total Reward")
-    
+    plt.legend()
+
     # Plot delays
     plt.subplot(2, 2, 2)
-    plt.plot(metrics["delays"])
+    plt.plot(episodes, metrics["delays"], label="Delays")
+    # Add trend line
+    z = np.polyfit(episodes, metrics["delays"], 1)
+    p = np.poly1d(z)
+    plt.plot(episodes, p(episodes), "r--", label=f"Trend (slope={z[0]:.2f})")
     plt.title(f"Phase {phase_idx + 1}: {phase_name} - Delays")
     plt.xlabel("Episode")
     plt.ylabel("Total Delay (minutes)")
-    
+    plt.legend()
+
     # Plot on-time rates
     plt.subplot(2, 2, 3)
-    plt.plot(metrics["on_time_rates"])
+    plt.plot(episodes, metrics["on_time_rates"], label="On-Time Rate")
+    # Add trend line
+    z = np.polyfit(episodes, metrics["on_time_rates"], 1)
+    p = np.poly1d(z)
+    plt.plot(episodes, p(episodes), "r--", label=f"Trend (slope={z[0]:.2f})")
     plt.title(f"Phase {phase_idx + 1}: {phase_name} - On-Time Rate")
     plt.xlabel("Episode")
     plt.ylabel("On-Time Rate (%)")
     plt.ylim(0, 100)
-    
+    plt.legend()
+
     # Plot postponement rates
     plt.subplot(2, 2, 4)
-    plt.plot(metrics["postponement_rates"])
+    plt.plot(episodes, metrics["postponement_rates"], label="Postponement Rate")
+    # Add trend line
+    z = np.polyfit(episodes, metrics["postponement_rates"], 1)
+    p = np.poly1d(z)
+    plt.plot(episodes, p(episodes), "r--", label=f"Trend (slope={z[0]:.2f})")
     plt.title(f"Phase {phase_idx + 1}: {phase_name} - Postponement Rate")
     plt.xlabel("Episode")
     plt.ylabel("Postponement Rate (%)")
     plt.ylim(0, 100)
-    
+    plt.legend()
+
     plt.tight_layout()
     plt.savefig(os.path.join(output_dir, f"phase{phase_idx+1}_results_{timestamp}.png"), dpi=300)
     plt.close()
 
 def plot_training_results(metrics, phases, output_dir, timestamp):
-    """Plot overall training results across all phases."""
+    """Plot overall training results across all phases with trend lines."""
     plt.figure(figsize=(15, 12))
+    
+    # Number of episodes for x-axis
+    episodes = np.arange(len(metrics["rewards"]))
     
     # Get phase transition points
     phase_transitions = metrics["phase_transitions"]
-    
+
     # Plot rewards
     plt.subplot(2, 2, 1)
-    plt.plot(metrics["rewards"])
+    plt.plot(episodes, metrics["rewards"], label="Rewards")
+    # Add trend line
+    z = np.polyfit(episodes, metrics["rewards"], 1)
+    p = np.poly1d(z)
+    plt.plot(episodes, p(episodes), "r--", label=f"Trend (slope={z[0]:.2f})")
     plt.title("Total Reward Across All Phases")
     plt.xlabel("Total Episodes")
     plt.ylabel("Reward")
-    
-    # Add vertical lines for phase transitions
     for i, transition in enumerate(phase_transitions):
-        plt.axvline(x=transition, color='r', linestyle='--')
+        plt.axvline(x=transition, color='g', linestyle='--')
         plt.text(transition, plt.ylim()[0] + (plt.ylim()[1] - plt.ylim()[0])*0.1, 
-                 f"P{i+1}→P{i+2}", 
-                 rotation=90, verticalalignment='bottom')
-    
+                 f"P{i+1}→P{i+2}", rotation=90, verticalalignment='bottom')
+    plt.legend()
+
     # Plot delays
     plt.subplot(2, 2, 2)
-    plt.plot(metrics["delays"])
+    plt.plot(episodes, metrics["delays"], label="Delays")
+    # Add trend line
+    z = np.polyfit(episodes, metrics["delays"], 1)
+    p = np.poly1d(z)
+    plt.plot(episodes, p(episodes), "r--", label=f"Trend (slope={z[0]:.2f})")
     plt.title("Total Delay Across All Phases")
     plt.xlabel("Total Episodes")
     plt.ylabel("Delay (minutes)")
-    
-    # Add vertical lines for phase transitions
     for i, transition in enumerate(phase_transitions):
-        plt.axvline(x=transition, color='r', linestyle='--')
+        plt.axvline(x=transition, color='g', linestyle='--')
         plt.text(transition, plt.ylim()[0] + (plt.ylim()[1] - plt.ylim()[0])*0.1, 
-                 f"P{i+1}→P{i+2}", 
-                 rotation=90, verticalalignment='bottom')
-    
+                 f"P{i+1}→P{i+2}", rotation=90, verticalalignment='bottom')
+    plt.legend()
+
     # Plot on-time rates
     plt.subplot(2, 2, 3)
-    plt.plot(metrics["on_time_rates"])
+    plt.plot(episodes, metrics["on_time_rates"], label="On-Time Rate")
+    # Add trend line
+    z = np.polyfit(episodes, metrics["on_time_rates"], 1)
+    p = np.poly1d(z)
+    plt.plot(episodes, p(episodes), "r--", label=f"Trend (slope={z[0]:.2f})")
     plt.title("On-Time Delivery Rate Across All Phases")
     plt.xlabel("Total Episodes")
     plt.ylabel("On-Time Rate (%)")
     plt.ylim(0, 100)
-    
-    # Add vertical lines for phase transitions
     for i, transition in enumerate(phase_transitions):
-        plt.axvline(x=transition, color='r', linestyle='--')
+        plt.axvline(x=transition, color='g', linestyle='--')
         plt.text(transition, plt.ylim()[0] + (plt.ylim()[1] - plt.ylim()[0])*0.1, 
-                 f"P{i+1}→P{i+2}", 
-                 rotation=90, verticalalignment='bottom')
-    
+                 f"P{i+1}→P{i+2}", rotation=90, verticalalignment='bottom')
+    plt.legend()
+
     # Plot postponement rates
     plt.subplot(2, 2, 4)
-    plt.plot(metrics["postponement_rates"])
+    plt.plot(episodes, metrics["postponement_rates"], label="Postponement Rate")
+    # Add trend line
+    z = np.polyfit(episodes, metrics["postponement_rates"], 1)
+    p = np.poly1d(z)
+    plt.plot(episodes, p(episodes), "r--", label=f"Trend (slope={z[0]:.2f})")
     plt.title("Postponement Rate Across All Phases")
     plt.xlabel("Total Episodes")
     plt.ylabel("Postponement Rate (%)")
     plt.ylim(0, 100)
-    
-    # Add vertical lines for phase transitions
     for i, transition in enumerate(phase_transitions):
-        plt.axvline(x=transition, color='r', linestyle='--')
+        plt.axvline(x=transition, color='g', linestyle='--')
         plt.text(transition, plt.ylim()[0] + (plt.ylim()[1] - plt.ylim()[0])*0.1, 
-                 f"P{i+1}→P{i+2}", 
-                 rotation=90, verticalalignment='bottom')
-    
+                 f"P{i+1}→P{i+2}", rotation=90, verticalalignment='bottom')
+    plt.legend()
+
     plt.tight_layout()
     plt.savefig(os.path.join(output_dir, f"overall_results_{timestamp}.png"), dpi=300)
     plt.close()
@@ -539,6 +595,7 @@ def evaluate_model(
             reposition_idle_vehicles=False,
             visualize=visualize,
             rl_model_path=model_path,
+            exploration_rate=0.00,
             **env_params  # Pass environment parameters
         )
         
@@ -566,9 +623,146 @@ def evaluate_model(
     
     return metrics
 
+
+# def compare_models(
+#     heuristic_episodes: int = 5,
+#     rl_episodes: int = 5,
+#     rl_model_path: str = None,
+#     seed: int = 200,
+#     visualize: bool = False,
+#     env_config=None,  # Added parameter for environment config
+# ):
+#     """
+#     Compare the RL-based ACA with the original heuristic ACA.
+#     """
+#     logger.info("Comparing heuristic ACA vs RL-based ACA")
+    
+#     # Use default environment if none provided
+#     env_params = env_config or {}
+    
+#     # Run heuristic ACA episodes
+#     heuristic_metrics = {
+#         "total_rewards": [],
+#         "total_delays": [],
+#         "on_time_rates": [],
+#         "postponement_rates": []
+#     }
+    
+#     for episode in tqdm(range(heuristic_episodes), desc="Running Heuristic ACA"):
+#         stats = run_test_episode(
+#             solver_name="aca",  # Original ACA
+#             seed=seed + episode,
+#             reposition_idle_vehicles=False,
+#             visualize=visualize,
+#             env_config=env_params  # Pass as a single parameter instead of unpacking
+#         )
+        
+#         heuristic_metrics["total_rewards"].append(stats["total_reward"])
+#         heuristic_metrics["total_delays"].append(sum(stats["delay_values"]) if stats["delay_values"] else 0)
+        
+#         total_orders = max(1, stats["orders_delivered"])
+#         late_orders = len(stats["late_orders"])
+#         on_time_rate = ((total_orders - late_orders) / total_orders) * 100
+#         heuristic_metrics["on_time_rates"].append(on_time_rate)
+        
+#         postponement_rate = len(stats["postponed_orders"]) / max(1, stats["total_orders"]) * 100
+#         heuristic_metrics["postponement_rates"].append(postponement_rate)
+    
+#     # Run RL-based ACA episodes
+#     rl_metrics = {
+#         "total_rewards": [],
+#         "total_delays": [],
+#         "on_time_rates": [],
+#         "postponement_rates": []
+#     }
+    
+#     for episode in tqdm(range(rl_episodes), desc="Running RL-based ACA"):
+#         stats = run_test_episode(
+#             solver_name="rl_aca",  # RL-based ACA
+#             seed=seed + episode,
+#             reposition_idle_vehicles=False,
+#             visualize=visualize,
+#             rl_model_path=rl_model_path,
+#             exploration_rate=0.00,
+#             env_config=env_params  # Pass as a single parameter instead of unpacking
+#         )
+        
+#         rl_metrics["total_rewards"].append(stats["total_reward"])
+#         rl_metrics["total_delays"].append(sum(stats["delay_values"]) if stats["delay_values"] else 0)
+        
+#         total_orders = max(1, stats["orders_delivered"])
+#         late_orders = len(stats["late_orders"])
+#         on_time_rate = ((total_orders - late_orders) / total_orders) * 100
+#         rl_metrics["on_time_rates"].append(on_time_rate)
+        
+#         postponement_rate = len(stats["postponed_orders"]) / max(1, stats["total_orders"]) * 100
+#         rl_metrics["postponement_rates"].append(postponement_rate)
+
+#     # Calculate average metrics
+#     heuristic_avg_reward = np.mean(heuristic_metrics["total_rewards"])
+#     heuristic_avg_delay = np.mean(heuristic_metrics["total_delays"])
+#     heuristic_avg_on_time = np.mean(heuristic_metrics["on_time_rates"])
+#     heuristic_avg_postpone = np.mean(heuristic_metrics["postponement_rates"])
+    
+#     rl_avg_reward = np.mean(rl_metrics["total_rewards"])
+#     rl_avg_delay = np.mean(rl_metrics["total_delays"])
+#     rl_avg_on_time = np.mean(rl_metrics["on_time_rates"])
+#     rl_avg_postpone = np.mean(rl_metrics["postponement_rates"])
+#     logger.info("\nComparison Results:")
+#     logger.info(f"{'Metric':<25} {'Heuristic ACA':<20} {'RL-based ACA':<20} {'Improvement':<15}")
+#     logger.info(f"{'-'*70}")
+#     logger.info(f"{'Average Reward':<25} {heuristic_avg_reward:<20.2f} {rl_avg_reward:<20.2f} {((rl_avg_reward - heuristic_avg_reward) / abs(heuristic_avg_reward)) * 100:<15.2f}%")
+#     logger.info(f"{'Average Total Delay':<25} {heuristic_avg_delay:<20.2f} {rl_avg_delay:<20.2f} {((heuristic_avg_delay - rl_avg_delay) / heuristic_avg_delay) * 100:<15.2f}%")
+#     logger.info(f"{'Average On-Time Rate':<25} {heuristic_avg_on_time:<20.2f}% {rl_avg_on_time:<20.2f}% {(rl_avg_on_time - heuristic_avg_on_time):<15.2f}pp")
+#     logger.info(f"{'Postponement Rate':<25} {heuristic_avg_postpone:<20.2f}% {rl_avg_postpone:<20.2f}% {(rl_avg_postpone - heuristic_avg_postpone):<15.2f}pp")
+    
+#     # Create comparison plot
+#     plt.figure(figsize=(15, 10))
+    
+#     # Plot rewards comparison
+#     plt.subplot(2, 2, 1)
+#     plt.bar(["Heuristic", "RL"], [heuristic_avg_reward, rl_avg_reward])
+#     plt.title("Average Reward")
+#     plt.ylabel("Reward")
+    
+#     # Plot delay comparison
+#     plt.subplot(2, 2, 2)
+#     plt.bar(["Heuristic", "RL"], [heuristic_avg_delay, rl_avg_delay])
+#     plt.title("Average Total Delay")
+#     plt.ylabel("Delay (minutes)")
+    
+#     # Plot on-time rate comparison
+#     plt.subplot(2, 2, 3)
+#     plt.bar(["Heuristic", "RL"], [heuristic_avg_on_time, rl_avg_on_time])
+#     plt.title("Average On-Time Rate")
+#     plt.ylabel("On-Time Rate (%)")
+#     plt.ylim(0, 100)
+    
+#     # Plot postponement rate comparison
+#     plt.subplot(2, 2, 4)
+#     plt.bar(["Heuristic", "RL"], [heuristic_avg_postpone, rl_avg_postpone])
+#     plt.title("Postponement Rate")
+#     plt.ylabel("Postponement Rate (%)")
+#     plt.ylim(0, 100)
+    
+#     plt.tight_layout()
+    
+#     # Save plot
+#     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+#     comparison_path = f"data/models/aca_comparison_{timestamp}.png"
+#     plt.savefig(comparison_path, dpi=300)
+#     plt.close()
+    
+#     logger.info(f"\nComparison chart saved to {comparison_path}")
+#     return {
+#         "heuristic": heuristic_metrics,
+#         "rl": rl_metrics
+#     }
+
+
 def compare_models(
-    heuristic_episodes: int = 5,
-    rl_episodes: int = 5,
+    heuristic_episodes: int = 100,
+    rl_episodes: int = 100,
     rl_model_path: str = None,
     seed: int = 200,
     visualize: bool = False,
@@ -625,6 +819,7 @@ def compare_models(
             reposition_idle_vehicles=False,
             visualize=visualize,
             rl_model_path=rl_model_path,
+            exploration_rate=0.00,
             env_config=env_params  # Pass as a single parameter instead of unpacking
         )
         
@@ -657,34 +852,99 @@ def compare_models(
     logger.info(f"{'Average On-Time Rate':<25} {heuristic_avg_on_time:<20.2f}% {rl_avg_on_time:<20.2f}% {(rl_avg_on_time - heuristic_avg_on_time):<15.2f}pp")
     logger.info(f"{'Postponement Rate':<25} {heuristic_avg_postpone:<20.2f}% {rl_avg_postpone:<20.2f}% {(rl_avg_postpone - heuristic_avg_postpone):<15.2f}pp")
     
-    # Create comparison plot
-    plt.figure(figsize=(15, 10))
-    
+    # Create comparison plots as line charts
+    plt.figure(figsize=(15, 12))
+
+    # Get seed numbers for x-axis
+    seed_numbers = [seed + i for i in range(max(heuristic_episodes, rl_episodes))]
+    heuristic_x = seed_numbers[:heuristic_episodes]
+    rl_x = seed_numbers[:rl_episodes]
+
     # Plot rewards comparison
     plt.subplot(2, 2, 1)
-    plt.bar(["Heuristic", "RL"], [heuristic_avg_reward, rl_avg_reward])
-    plt.title("Average Reward")
-    plt.ylabel("Reward")
-    
+    plt.plot(heuristic_x, heuristic_metrics["total_rewards"], 'o-', label="Heuristic")
+    plt.plot(rl_x, rl_metrics["total_rewards"], 'o-', label="RL")
+
+    # Add trend lines
+    if len(heuristic_x) > 1:
+        h_z = np.polyfit(heuristic_x, heuristic_metrics["total_rewards"], 1)
+        h_p = np.poly1d(h_z)
+        plt.plot(heuristic_x, h_p(heuristic_x), "r--", label=f"Heuristic Trend (slope={h_z[0]:.2f})")
+
+    if len(rl_x) > 1:
+        rl_z = np.polyfit(rl_x, rl_metrics["total_rewards"], 1)
+        rl_p = np.poly1d(rl_z)
+        plt.plot(rl_x, rl_p(rl_x), "g--", label=f"RL Trend (slope={rl_z[0]:.2f})")
+
+    plt.title("Rewards by Seed")
+    plt.xlabel("Seed")
+    plt.ylabel("Total Reward")
+    plt.legend()
+
     # Plot delay comparison
     plt.subplot(2, 2, 2)
-    plt.bar(["Heuristic", "RL"], [heuristic_avg_delay, rl_avg_delay])
-    plt.title("Average Total Delay")
-    plt.ylabel("Delay (minutes)")
-    
+    plt.plot(heuristic_x, heuristic_metrics["total_delays"], 'o-', label="Heuristic")
+    plt.plot(rl_x, rl_metrics["total_delays"], 'o-', label="RL")
+
+    # Add trend lines
+    if len(heuristic_x) > 1:
+        h_z = np.polyfit(heuristic_x, heuristic_metrics["total_delays"], 1)
+        h_p = np.poly1d(h_z)
+        plt.plot(heuristic_x, h_p(heuristic_x), "r--", label=f"Heuristic Trend (slope={h_z[0]:.2f})")
+
+    if len(rl_x) > 1:
+        rl_z = np.polyfit(rl_x, rl_metrics["total_delays"], 1)
+        rl_p = np.poly1d(rl_z)
+        plt.plot(rl_x, rl_p(rl_x), "g--", label=f"RL Trend (slope={rl_z[0]:.2f})")
+
+    plt.title("Total Delay by Seed")
+    plt.xlabel("Seed")
+    plt.ylabel("Total Delay (minutes)")
+    plt.legend()
+
     # Plot on-time rate comparison
     plt.subplot(2, 2, 3)
-    plt.bar(["Heuristic", "RL"], [heuristic_avg_on_time, rl_avg_on_time])
-    plt.title("Average On-Time Rate")
+    plt.plot(heuristic_x, heuristic_metrics["on_time_rates"], 'o-', label="Heuristic")
+    plt.plot(rl_x, rl_metrics["on_time_rates"], 'o-', label="RL")
+
+    # Add trend lines
+    if len(heuristic_x) > 1:
+        h_z = np.polyfit(heuristic_x, heuristic_metrics["on_time_rates"], 1)
+        h_p = np.poly1d(h_z)
+        plt.plot(heuristic_x, h_p(heuristic_x), "r--", label=f"Heuristic Trend (slope={h_z[0]:.2f})")
+
+    if len(rl_x) > 1:
+        rl_z = np.polyfit(rl_x, rl_metrics["on_time_rates"], 1)
+        rl_p = np.poly1d(rl_z)
+        plt.plot(rl_x, rl_p(rl_x), "g--", label=f"RL Trend (slope={rl_z[0]:.2f})")
+
+    plt.title("On-Time Rate by Seed")
+    plt.xlabel("Seed")
     plt.ylabel("On-Time Rate (%)")
     plt.ylim(0, 100)
-    
+    plt.legend()
+
     # Plot postponement rate comparison
     plt.subplot(2, 2, 4)
-    plt.bar(["Heuristic", "RL"], [heuristic_avg_postpone, rl_avg_postpone])
-    plt.title("Postponement Rate")
+    plt.plot(heuristic_x, heuristic_metrics["postponement_rates"], 'o-', label="Heuristic")
+    plt.plot(rl_x, rl_metrics["postponement_rates"], 'o-', label="RL")
+
+    # Add trend lines
+    if len(heuristic_x) > 1:
+        h_z = np.polyfit(heuristic_x, heuristic_metrics["postponement_rates"], 1)
+        h_p = np.poly1d(h_z)
+        plt.plot(heuristic_x, h_p(heuristic_x), "r--", label=f"Heuristic Trend (slope={h_z[0]:.2f})")
+
+    if len(rl_x) > 1:
+        rl_z = np.polyfit(rl_x, rl_metrics["postponement_rates"], 1)
+        rl_p = np.poly1d(rl_z)
+        plt.plot(rl_x, rl_p(rl_x), "g--", label=f"RL Trend (slope={rl_z[0]:.2f})")
+
+    plt.title("Postponement Rate by Seed")
+    plt.xlabel("Seed")
     plt.ylabel("Postponement Rate (%)")
     plt.ylim(0, 100)
+    plt.legend()
     
     plt.tight_layout()
     
@@ -700,6 +960,10 @@ def compare_models(
         "rl": rl_metrics
     }
 
+
+
+
+
 def define_training_phases():
     """
     Define the progressive training phases with increasing complexity.
@@ -712,14 +976,15 @@ def define_training_phases():
                 "num_vehicles": 5,  # Start with just 2 vehicles
                 "num_restaurants": 5,  # Limited restaurants
                 "service_area_dimensions": (4.0, 4.0),  # Small area
-                "mean_interarrival_time": 2.0,  # Low order density
+                "mean_interarrival_time": 5.0,  # Low order density
             },
             "performance_criteria": {
                 # No performance criteria - phase will run until max_episodes
             },
             "min_episodes": 20, 
-            "max_episodes": 600    # More episodes for initial learning
-        },
+            "max_episodes": 10000    # More episodes for initial learning
+        }
+        ,
         
         # Phase 2: Intermediate Environment
         {
@@ -728,13 +993,13 @@ def define_training_phases():
                 "num_vehicles": 15,  # Increase to 5 vehicles
                 "num_restaurants": 15,  # More restaurants
                 "service_area_dimensions": (4.0, 4.0),  # Larger area
-                "mean_interarrival_time": 0.9,  # Medium order density
+                "mean_interarrival_time": 1.5,  # Medium order density
             },
             "performance_criteria": {
                 # No performance criteria - phase will run until max_episodes
             },
-            "min_episodes": 30, # 30, 200
-            "max_episodes": 100    # Substantial training in intermediate complexity
+            "min_episodes": 20,  # 30, 100
+            "max_episodes": 100   # Substantial training in intermediate complexity
         },
         
         # Phase 3: Full Environment
@@ -744,13 +1009,13 @@ def define_training_phases():
                 "num_vehicles": 30,  # Full fleet
                 "num_restaurants": 30,  # All restaurants
                 "service_area_dimensions": (4.0, 4.0),  # Complete service area
-                "mean_interarrival_time": 0.6,  # High order density
+                "mean_interarrival_time": 0.65,  # High order density
             },
             "performance_criteria": {
                 # No performance criteria - phase will run until max_episodes
             },
-            "min_episodes": 50, # 50, 300
-            "max_episodes": 100    # Extensive training in full complexity
+            "min_episodes": 20,  # 50, 300
+            "max_episodes": 100   # Extensive training in full complexity
         }
     ]
     
@@ -770,12 +1035,13 @@ if __name__ == "__main__":
     parser.add_argument('--save_interval', type=int, default=10, help='Save model every N episodes')
     parser.add_argument('--seed', type=int, default=42, help='Random seed')
     parser.add_argument('--compare', action='store_true', help='Compare with heuristic ACA after training')
-    parser.add_argument('--compare-only', action='store_true', 
-                        help='Only compare existing model with heuristic ACA (no training)')
-    parser.add_argument('--model-path', type=str, default=None,
-                        help='Path to existing model for comparison (required with --compare-only)')
-    parser.add_argument('--no-compare', action='store_true', 
-                    help='Do not compare with heuristic ACA after training')
+    parser.add_argument('--compare-only', action='store_true', help='Only compare existing model with heuristic ACA (no training)')
+    parser.add_argument('--model-path', type=str, default=None, help='Path to existing model for comparison (required with --compare-only)')
+    parser.add_argument('--no-compare', action='store_true', help='Do not compare with heuristic ACA after training')
+    parser.add_argument('--initial-exploration', type=float, default=0.9, help='Initial exploration rate (default: 0.9)')
+    parser.add_argument('--min-exploration', type=float, default=0.01, help='Minimum exploration rate (default: 0.05)')
+    parser.add_argument('--decay-method', type=str, choices=['linear', 'exponential'], default='exponential', help='Exploration rate decay method (default: linear)')
+    parser.add_argument('--decay-rate', type=float, default=0.995, help='Decay rate for exponential decay (default: 0.995)')
     args = parser.parse_args()
     
     # Set seed for reproducibility
@@ -802,8 +1068,8 @@ if __name__ == "__main__":
         
         logger.info(f"Comparing models using existing model at: {model_path}")
         compare_models(
-            heuristic_episodes=5,
-            rl_episodes=5,
+            heuristic_episodes=100,
+            rl_episodes=100,
             rl_model_path=model_path,
             seed=seed,
             visualize=args.visualize,
@@ -843,16 +1109,24 @@ if __name__ == "__main__":
             model_dir="data/models",
             resume_from_model=latest_model if resume else None,
             start_phase=phase if resume else 0,
-            start_episode=episode if resume else 0
+            start_episode=episode if resume else 0,
+            exploration_start=args.initial_exploration,
+            exploration_end=args.min_exploration,
+            decay_method=args.decay_method,
+            decay_rate=args.decay_rate
         )
-        
+
+
+
+
+
         # Always compare after training, unless explicitly turned off
         if not hasattr(args, 'no_compare') or not args.no_compare:
             compare_models(
-                heuristic_episodes=5,
-                rl_episodes=5,
+                heuristic_episodes=100,
+                rl_episodes=100,
                 rl_model_path=final_model_path,
-                seed=seed + 100,
+                seed=seed,
                 visualize=args.visualize,
                 env_config=phases[-1]["env_config"]
             )

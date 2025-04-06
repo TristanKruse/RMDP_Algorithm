@@ -65,14 +65,16 @@ class RLPostponementDecision:
     def __init__(
         self,
         learning_rate: float = 0.001,
-        discount_factor: float = 0.95,
+        discount_factor: float = 1,
         exploration_rate: float = 0.9,
         exploration_decay: float = 0.995,
-        min_exploration_rate: float = 0.05,
+        min_exploration_rate: float = 0.01,
         batch_size: int = 32,
         training_mode: bool = True,
         state_size: int = 6,  # Number of features in state representation
-        lns_sample_size: int = 5  # Number of neighborhood samples to evaluate
+        lns_sample_size: int = 5,  # Number of neighborhood samples to evaluate
+        max_order_age: int = 200,  # Maximum time to track an order (minutes)
+        timeout_reward: float = -160.0  # Reward for timed-out orders
     ):
         # Core parameters
         self.training_mode = training_mode
@@ -106,7 +108,13 @@ class RLPostponementDecision:
         self.batch_losses = []
         # Add tracking for next states
         self.current_episode_next_states = {}  # order_id -> next_state tensor after action
-    
+
+        # Order tracking for delayed rewards
+        self.order_tracker = {}  # {order_id: {'actions': [(state_tensor, action)], 'delivered': False, 'final_delay': None}}
+        self.completed_orders = []  # List of orders ready for learning
+        self.max_order_age = max_order_age   # Maximum time to track an order (minutes)
+        self.timeout_reward = timeout_reward  # Reward for timed-out orders
+        
     def extract_state_features(self, order_id: int, route_plan: dict, current_time: float, state: dict) -> torch.Tensor:
         """
         Extract relevant features from the state for the RL model.
@@ -218,10 +226,17 @@ class RLPostponementDecision:
         order_id: int,
         current_time: float,
         state: dict,
+        exploration_rate=None
     ) -> bool:
         """
-        Decide whether to postpone an order using VFA with LNS.
+        Decide whether to postpone an order using the Neural Network.
         """
+
+        if exploration_rate is not None:
+            current_exploration = exploration_rate
+        else:
+            current_exploration = self.exploration_rate
+
         # Extract state features
         state_tensor = self.extract_state_features(order_id, route_plan, current_time, state)
         
@@ -230,92 +245,147 @@ class RLPostponementDecision:
             self.current_episode_states[order_id] = state_tensor
         
         # Biased exploration - 90% chance to not postpone during exploration
-        if self.training_mode and random.random() < self.exploration_rate:
+        if self.training_mode and random.random() < current_exploration:
             action = 1 if random.random() < 0.5 else 0  # 50% postpone, 50% assign
             should_postpone = action == 1
         else:
-            # Exploitation with LNS
+            # Exploitation
             should_postpone = self._greedy_action_selection(state_tensor)
 
-        # Store action for experience collection if in training mode
+        # Record decision in order tracker
         if self.training_mode:
+            if order_id not in self.order_tracker:
+                self.order_tracker[order_id] = {
+                    'actions': [],
+                    'first_seen': current_time,
+                    'delivered': False,
+                    'final_delay': None
+                }
+            
+            # Store state and action
+            self.order_tracker[order_id]['actions'].append((state_tensor, 1 if should_postpone else 0))
+            
+            # Also store in current_episode_states and current_episode_actions for compatibility
+            self.current_episode_states[order_id] = state_tensor
             self.current_episode_actions[order_id] = 1 if should_postpone else 0
         
         return should_postpone
+
+    def record_order_delivery(self, order_id, final_delay,  current_time=None):
+        """Record the final delay when an order is delivered."""
+        if order_id in self.order_tracker:
+            self.order_tracker[order_id]['delivered'] = True
+            self.order_tracker[order_id]['final_delay'] = final_delay
+            self.completed_orders.append(order_id)
+            
+            # If we have enough completed orders, trigger learning
+            if len(self.completed_orders) >= self.batch_size:
+                self._process_completed_orders(current_time)
+
+    def _process_completed_orders(self, current_time=None):
+        """Process completed orders and add their experiences to replay buffer."""
+        if not self.completed_orders:
+            return 0.0
+            
+        # Add experiences to replay buffer
+        experiences_added = 0
+        for order_id in self.completed_orders:
+            order_data = self.order_tracker[order_id]
+            if not order_data['delivered']:
+                continue
+                
+            final_delay = order_data['final_delay']
+            # Use negative delay as reward (lower delay = higher reward)
+            reward = -final_delay
+            
+            # Add each state-action pair with the same final reward
+            for i, (state_tensor, action) in enumerate(order_data['actions']):
+                # Check if this is the last action
+                is_last_action = (i == len(order_data['actions']) - 1)
+                
+                # Get next state
+                if not is_last_action:
+                    # Get the next state from the next action in the sequence
+                    next_state_tensor = order_data['actions'][i + 1][0]
+                else:
+                    # For the last action, use zeros
+                    next_state_tensor = torch.zeros_like(state_tensor)
+                
+                # Add to replay buffer
+                self.replay_buffer.add(
+                    state=state_tensor.unsqueeze(0),
+                    action=action,
+                    reward=reward,
+                    next_state=next_state_tensor.unsqueeze(0),
+                    done=is_last_action
+                )
+                experiences_added += 1
         
-    def estimate_value(self, state_tensor: torch.Tensor, action: int) -> float:
-        with torch.no_grad():
-            q_values = self.value_network(state_tensor.unsqueeze(0))  # [1, 2]
-            return q_values[0, action].item()
+        # Update model if we have enough samples
+        if len(self.replay_buffer) >= self.batch_size:
+            loss = self._update_model()
+            # logger.debug(f"Model updated from completed orders. Loss: {loss:.6f}")
+        
+        # Clear completed orders and remove from tracker
+        for order_id in self.completed_orders:
+            if order_id in self.order_tracker:
+                del self.order_tracker[order_id]
+        self.completed_orders = []
+        
+        # Clean up old orders
+        self._cleanup_old_orders(current_time)
+        
+        return 0.0
+
+    def _cleanup_old_orders(self, current_time):
+        """Remove very old orders from tracking and assign timeout penalties."""
+        if not current_time:
+            return
+        
+        timeout_orders = []
+        for order_id, data in self.order_tracker.items():
+            # If delivered, it will be handled by _process_completed_orders
+            if data['delivered']:
+                continue
+                
+            # Check if order is too old
+            if current_time - data['first_seen'] > self.max_order_age:
+                timeout_orders.append(order_id)
+                
+                # Assign a timeout penalty (large negative reward)
+                timeout_reward = self.timeout_reward  # Strong negative reward for timeout
+                
+                # Add each state-action pair with the timeout penalty
+                for i, (state_tensor, action) in enumerate(data['actions']):
+                    is_last_action = (i == len(data['actions']) - 1)
+                    
+                    # Get next state
+                    if not is_last_action:
+                        next_state_tensor = data['actions'][i + 1][0]
+                    else:
+                        next_state_tensor = torch.zeros_like(state_tensor)
+                    
+                    # Add to replay buffer with timeout penalty
+                    self.replay_buffer.add(
+                        state=state_tensor.unsqueeze(0),
+                        action=action,
+                        reward=timeout_reward,
+                        next_state=next_state_tensor.unsqueeze(0),
+                        done=is_last_action
+                    )
+        
+        # Log timeouts if any
+        if timeout_orders:
+            logger.debug(f"Timed out {len(timeout_orders)} orders: {timeout_orders}")
+        
+        # Remove timed out orders
+        for order_id in timeout_orders:
+            del self.order_tracker[order_id]
 
     def _greedy_action_selection(self, state_tensor: torch.Tensor) -> bool:
         with torch.no_grad():
             q_values = self.value_network(state_tensor.unsqueeze(0))  # [1, 2]
             return q_values.argmax().item() == 1  # 1 if postpone has higher Q-value
-
-    def _update_model(self) -> float:
-        if len(self.replay_buffer) < self.batch_size:
-            return 0.0
-
-        batch = self.replay_buffer.sample(self.batch_size)
-        states, actions, rewards, next_states, dones = zip(*batch)
-
-        states = torch.cat(states)  # [batch_size, state_size]
-        actions = torch.tensor(actions, dtype=torch.long)  # [batch_size]
-        rewards = torch.tensor(rewards, dtype=torch.float32)
-        next_states = torch.cat(next_states)
-        dones = torch.tensor(dones, dtype=torch.float32)
-
-        # Current Q-values for taken actions
-        q_values = self.value_network(states)  # [batch_size, 2]
-        current_q = q_values.gather(1, actions.unsqueeze(1)).squeeze(1)  # [batch_size]
-
-        # Target Q-values
-        with torch.no_grad():
-            next_q_values = self.value_network(next_states)  # [batch_size, 2]
-            max_next_q = next_q_values.max(dim=1)[0]  # [batch_size]
-            targets = rewards + self.discount_factor * max_next_q * (1 - dones)
-
-        loss = self.criterion(current_q, targets)
-        self.optimizer.zero_grad()
-        loss.backward()
-        self.optimizer.step()
-
-        self.total_training_steps += 1
-        self.batch_losses.append(loss.item())
-        return loss.item
-
-    def update_from_rewards(self, rewards: Dict[int, float], next_state_dict: dict) -> float:
-        if not self.training_mode or not self.current_episode_states:
-            return 0.0
-
-        for order_id in self.current_episode_states.keys():
-            if order_id in self.current_episode_actions and order_id in rewards:
-                state_tensor = self.current_episode_states[order_id]  # [6]
-                action = self.current_episode_actions[order_id]
-                reward = rewards[order_id]
-
-                if order_id in next_state_dict["unassigned_orders"]:
-                    next_state_tensor = self.extract_state_features(
-                        order_id, next_state_dict["route_plan"], next_state_dict["time"], next_state_dict
-                    )
-                    done = False
-                else:
-                    next_state_tensor = torch.zeros_like(state_tensor)
-                    done = True
-
-                self.replay_buffer.add(state_tensor.unsqueeze(0), action, reward, next_state_tensor.unsqueeze(0), done)
-
-        loss = self._update_model()
-        self.current_episode_states = {}
-        self.current_episode_actions = {}
-        self._decay_exploration_rate()
-        return loss
-
-    def _decay_exploration_rate(self) -> None:
-        """Decay exploration rate according to schedule."""
-        self.exploration_rate = max(self.min_exploration_rate, 
-                                   self.exploration_rate * self.exploration_decay)  
 
     def save_model(self, path: str) -> None:
         """Save model checkpoint to disk."""
@@ -342,4 +412,40 @@ class RLPostponementDecision:
         self.exploration_rate = checkpoint['exploration_rate']
         self.total_training_steps = checkpoint['total_training_steps']
         # logger.info(f"Model loaded from {path}")
+
+    def _update_model(self) -> float:
+        if len(self.replay_buffer) < self.batch_size:
+            return 0.0
+
+        batch = self.replay_buffer.sample(self.batch_size)
+        states, actions, rewards, next_states, dones = zip(*batch)
+
+        # Convert to tensors
+        states = torch.cat(states)  # [batch_size, state_size]
+        actions = torch.tensor(actions, dtype=torch.long).unsqueeze(1)  # [batch_size, 1]
+        rewards = torch.tensor(rewards, dtype=torch.float32)  # [batch_size]
+        next_states = torch.cat(next_states)  # [batch_size, state_size]
+        dones = torch.tensor(dones, dtype=torch.float32)  # [batch_size]
         
+        # Get current Q-values for taken actions
+        current_q_values = self.value_network(states)  # [batch_size, 2]
+        current_q = current_q_values.gather(1, actions).squeeze(1)  # [batch_size]
+        
+        # Calculate target Q values
+        with torch.no_grad():
+            next_q_values = self.value_network(next_states)  # [batch_size, 2]
+            next_q = next_q_values.max(1)[0]  # [batch_size]
+            target_q = rewards + (1 - dones) * self.discount_factor * next_q
+        
+        # Calculate loss and update
+        loss = self.criterion(current_q, target_q)
+        self.optimizer.zero_grad()
+        loss.backward()
+        self.optimizer.step()
+        
+        # Track training progress
+        self.total_training_steps += 1
+        self.batch_losses.append(loss.item())
+        
+        return loss.item()  # Note: Added parentheses here to call the method
+

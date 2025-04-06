@@ -33,7 +33,7 @@ class Order:
     expected_prep_time: float = None  # Expected preparation time when order created
     actual_prep_time: float = None  # Actual preparation time based on when order was ready
     driver_wait_time: float = 0.0  # How long driver waited for the order
-    current_delay: float = 0.0  # Current delay of the order
+    current_estimated_delay: float = 0.0  # Estimated delay based on current route plan
 
 
 @dataclass
@@ -54,6 +54,11 @@ class Vehicle:
 class Route:
     vehicle_id: int
     sequence: List[Tuple[int, Set[int], Set[int]]]  # (node_id, pickups, deliveries)
+    # Bundled Route Example: 
+    # {0: Route(vehicle_id=0, sequence=[(0, {0, 1, 2}, set()), (1000000, set(), {0}), (1000001, set(), {1}), (1000002, set(), {2})], 
+    # total_distance=0.0, total_time=0.0)}
+    # Sequential Route example:
+    # Route(vehicle_id=0, sequence=[(0, {0}, set()), (1000000, set(), {0}), (0, {1}, set()), (1000001, set(), {1}), (0, {2}, set()), (1000002, set(), {2})])
     total_distance: float = 0.0
     total_time: float = 0.0
 
