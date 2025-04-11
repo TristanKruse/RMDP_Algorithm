@@ -87,11 +87,6 @@ class RLPostponementDecision:
         self.max_order_age = max_order_age
         self.timeout_reward = timeout_reward
 
-        self.bundling_reward = 0.05  # Small reward for bundling
-        self.postponement_penalty = -0.01  # Small penalty per step of postponement
-        self.order_postponement_steps = {}  # Track how many steps each order has been postponed
-
-
     def extract_state_features(self, order_id: int, route_plan: dict, current_time: float, state: dict) -> torch.Tensor:
         features = []
         time_of_day = (current_time / 60) % 24 / 24
@@ -176,74 +171,18 @@ class RLPostponementDecision:
                     'delivered': False,
                     'final_delay': None
                 }
-                self.order_postponement_steps[order_id] = 0  # Initialize postponement steps
             self.order_tracker[order_id]['actions'].append((state_tensor, 1 if should_postpone else 0, current_time))
             self.current_episode_states[order_id] = state_tensor
             self.current_episode_actions[order_id] = 1 if should_postpone else 0
-            
-            # If postponing, increment the postponement steps and add a small penalty
-            if should_postpone:
-                self.order_postponement_steps[order_id] += 1
-                # Add an intermediate experience with a postponement penalty
-                self.replay_buffer.add(
-                    state=state_tensor.unsqueeze(0),
-                    action=1,
-                    reward=self.postponement_penalty,
-                    delta_t=0  # Immediate feedback
-                )
-                if len(self.replay_buffer) >= self.batch_size:
-                    self._update_model()
-
+        
         return should_postpone
 
-    # def _process_completed_orders(self, current_time=None):
-    #     if not self.completed_orders:
-    #         return 0.0
-        
-    #     experiences_added = 0
-    #     for order_id in self.completed_orders:
-    #         order_data = self.order_tracker[order_id]
-    #         if not order_data['delivered']:
-    #             continue
-                
-    #         final_delay = order_data['final_delay']
-    #         max_delay = self.max_order_age
-    #         normalized_reward = -(final_delay / max_delay) if final_delay > 0 else 0.2  # Increased on-time reward
-    #         normalized_reward = max(-1.0, normalized_reward)
-            
-    #         # Check if the order was bundled (simplified: assume bundling if assigned with other orders)
-    #         was_bundled = False  # You'll need to implement this based on your environment
-    #         if was_bundled:
-    #             normalized_reward += self.bundling_reward
-            
-    #         for i, (state_tensor, action, action_time) in enumerate(order_data['actions']):
-    #             delta_t = current_time - action_time
-    #             self.replay_buffer.add(
-    #                 state=state_tensor.unsqueeze(0),
-    #                 action=action,
-    #                 reward=normalized_reward,
-    #                 delta_t=delta_t
-    #             )
-    #             experiences_added += 1
-        
-    #     if len(self.replay_buffer) >= self.batch_size:
-    #         loss = self._update_model()
-        
-    #     for order_id in self.completed_orders:
-    #         if order_id in self.order_tracker:
-    #             del self.order_tracker[order_id]
-    #         if order_id in self.order_postponement_steps:
-    #             del self.order_postponement_steps[order_id]
-    #     self.completed_orders = []
-    #     self._cleanup_old_orders(current_time)
-    #     return 0.0
-    
-    # def record_order_delivery(self, order_id, final_delay, current_time=None):
-    #     if order_id in self.order_tracker:
-    #         self.order_tracker[order_id]['delivered'] = True
-    #         self.order_tracker[order_id]['final_delay'] = final_delay
-    #         self.completed_orders.append(order_id)
-    #         self._process_completed_orders(current_time)
+    def record_order_delivery(self, order_id, final_delay, current_time=None):
+        if order_id in self.order_tracker:
+            self.order_tracker[order_id]['delivered'] = True
+            self.order_tracker[order_id]['final_delay'] = final_delay
+            self.completed_orders.append(order_id)
+            self._process_completed_orders(current_time)
 
     def _process_completed_orders(self, current_time=None):
         if not self.completed_orders:
@@ -256,15 +195,10 @@ class RLPostponementDecision:
                 continue
                 
             final_delay = order_data['final_delay']
-            was_bundled = order_data.get('was_bundled', False)  # Get bundling info
+            # Normalize reward: map delay to [-1, 0], give small positive reward for on-time
             max_delay = self.max_order_age
-            normalized_reward = -(final_delay / max_delay) if final_delay > 0 else 0.2
+            normalized_reward = -(final_delay / max_delay) if final_delay > 0 else 0.1
             normalized_reward = max(-1.0, normalized_reward)
-            
-            # Add bundling reward if the order was bundled
-            if was_bundled:
-                normalized_reward += self.bundling_reward
-                # print(f"Order {order_id} was bundled, adding bundling reward: {self.bundling_reward}")
             
             for i, (state_tensor, action, action_time) in enumerate(order_data['actions']):
                 delta_t = current_time - action_time
@@ -282,20 +216,9 @@ class RLPostponementDecision:
         for order_id in self.completed_orders:
             if order_id in self.order_tracker:
                 del self.order_tracker[order_id]
-            if order_id in self.order_postponement_steps:
-                del self.order_postponement_steps[order_id]
         self.completed_orders = []
         self._cleanup_old_orders(current_time)
         return 0.0
-
-    def record_order_delivery(self, order_id, final_delay, current_time=None, was_bundled=False):
-        """Record the final delay when an order is delivered and whether it was bundled."""
-        if order_id in self.order_tracker:
-            self.order_tracker[order_id]['delivered'] = True
-            self.order_tracker[order_id]['final_delay'] = final_delay
-            self.order_tracker[order_id]['was_bundled'] = was_bundled  # Store bundling info
-            self.completed_orders.append(order_id)
-            self._process_completed_orders(current_time)
 
     def _cleanup_old_orders(self, current_time):
         if not current_time:

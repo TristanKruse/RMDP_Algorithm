@@ -4,6 +4,7 @@ import numpy as np
 from typing import Tuple, Optional, Dict
 from environment.state_handler import StateHandler
 from environment.order_manager import OrderManager
+from environment.order_generator import OrderGenerator
 from environment.vehicle_manager import VehicleManager
 from environment.route_processing.route_processor import RouteProcessor
 from environment.location_manager import LocationManager
@@ -51,7 +52,6 @@ class RestaurantMealDeliveryEnv:
         reposition_idle_vehicles: bool = False,
     ):
         self.reposition_idle_vehicles = reposition_idle_vehicles
-
         # Set random seeds if provided
         if seed is not None:
             random.seed(seed)
@@ -92,6 +92,22 @@ class RestaurantMealDeliveryEnv:
             demand_pattern=demand_pattern,  # Pass demand pattern to OrderManager
             simulation_duration=simulation_duration,  # Pass simulation duration
         )
+
+        if demand_pattern and isinstance(demand_pattern, dict) and demand_pattern.get('type') == 'hourly':
+            # Properly initialize the OrderGenerator for pattern mode
+            self.order_generator = OrderGenerator(
+                mean_interarrival_time=mean_interarrival_time,
+                service_area_dimensions=service_area_dimensions,
+                delivery_window=delivery_window,
+                service_time=service_time,
+                mean_prep_time=mean_prep_time,
+                prep_time_var=prep_time_var,
+                mode="pattern",
+                temporal_pattern=demand_pattern.get('hourly_rates', {})
+            )
+        # Set reference to order manager
+        self.order_manager.set_order_generator(self.order_generator)
+
 
         self.route_processor = RouteProcessor(
             service_time=service_time, location_manager=self.location_manager, 

@@ -114,15 +114,21 @@ def analyze_meal_prep_times(df, output_dir):
 
 def plot_hourly_demand(df, output_dir):
     """
-    Visualize the hourly demand distribution averaged over 8 days from the Meituan dataset.
+    Visualize the hourly demand distribution averaged over 8 days from the Meituan dataset
+    and compute a normalized demand pattern for all 24 hours relative to the average.
     
     This function:
-    1. Extracts order times and computes average hourly demand
-    2. Creates a line plot with peak hours highlighted
+    1. Extracts order times and computes average hourly demand.
+    2. Normalizes the demand relative to the average hourly rate to derive hourly rate multipliers.
+    3. Creates a line plot with peak hours highlighted.
+    4. Returns a dictionary mapping each hour to its rate multiplier.
     
     Args:
         df: DataFrame with order data
         output_dir: Directory to save visualizations
+    
+    Returns:
+        dict: A dictionary mapping each hour (0-23) to its rate multiplier
     """
     print("Analyzing hourly demand distribution...")
 
@@ -140,6 +146,24 @@ def plot_hourly_demand(df, output_dir):
     df['hour'] = df['platform_order_time'].dt.hour
     hourly_counts = df.groupby('hour').size() / 8  # Average over 8 days
 
+    # Ensure all hours (0-23) are present, filling missing hours with 0
+    hourly_counts = hourly_counts.reindex(range(24), fill_value=0)
+
+    # Define the average hourly rate as the base rate
+    average_rate = hourly_counts.mean()
+    if average_rate == 0:
+        average_rate = 1.0  # Avoid division by zero
+    print(f"Average hourly orders (base rate): {average_rate:.1f} orders per hour")
+
+    # Compute the rate multipliers relative to the average rate
+    rate_multipliers = hourly_counts / average_rate
+
+    # Create a dictionary mapping each hour to its rate multiplier
+    demand_pattern = {hour: rate for hour, rate in rate_multipliers.items()}
+    print("\nHourly demand pattern (rate multipliers relative to average):")
+    for hour, rate in demand_pattern.items():
+        print(f"Hour {hour:02d}: {rate:.2f}x")
+
     # Create plot
     plt.figure(figsize=(10, 6))
     sns.lineplot(x=hourly_counts.index, y=hourly_counts.values, marker='o', color='blue')
@@ -148,7 +172,7 @@ def plot_hourly_demand(df, output_dir):
     plt.title('Hourly Demand Distribution (Averaged Over 8 Days)')
     plt.grid(True, alpha=0.3)
 
-    # Highlight peak hours (e.g., lunch 11-14, dinner 17-20)
+    # Highlight peak hours (e.g., lunch 10-12, dinner 17-19)
     plt.axvspan(10, 12, color='yellow', alpha=0.2, label='Lunch Peak')
     plt.axvspan(17, 19, color='orange', alpha=0.2, label='Dinner Peak')
     plt.legend()
@@ -158,17 +182,43 @@ def plot_hourly_demand(df, output_dir):
     plt.close()
 
     # Print peak hour insights
-    peak_lunch = hourly_counts[11:15].mean()
-    peak_dinner = hourly_counts[17:21].mean()
-    print(f"Average orders during lunch peak (11:00-14:00): {peak_lunch:.1f}")
-    print(f"Average orders during dinner peak (17:00-20:00): {peak_dinner:.1f}")
+    peak_lunch = hourly_counts[10:13].mean()  # 10:00-12:00
+    peak_dinner = hourly_counts[17:20].mean()  # 17:00-19:00
+    off_peak = hourly_counts[[h for h in range(24) if h not in range(10, 13) and h not in range(17, 20)]].mean()
+    print(f"\nPeak demand insights:")
+    print(f"Average orders during lunch peak (10:00-12:00): {peak_lunch:.1f}")
+    print(f"Average orders during dinner peak (17:00-19:00): {peak_dinner:.1f}")
+    print(f"Average orders during off-peak hours: {off_peak:.1f}")
+    print(f"Lunch peak increase over average: {peak_lunch / average_rate:.1f}x")
+    print(f"Dinner peak increase over average: {peak_dinner / average_rate:.1f}x")
     
     # Print general hourly demand statistics
-    print(f"Hourly demand statistics:")
+    print(f"\nHourly demand statistics:")
     print(f"  Minimum hourly orders: {hourly_counts.min():.1f} (Hour: {hourly_counts.idxmin()})")
     print(f"  Maximum hourly orders: {hourly_counts.max():.1f} (Hour: {hourly_counts.idxmax()})")
     print(f"  Average hourly orders: {hourly_counts.mean():.1f}")
     print(f"  Median hourly orders: {hourly_counts.median():.1f}")
+
+    return demand_pattern
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

@@ -59,16 +59,32 @@ class OrderManager:
         when interarrival time is small
         """
         # Check if we have an OrderGenerator
+        # if hasattr(self, 'order_generator'):
+        #     # Get geo_bounds if available for coordinate conversion
+        #     geo_bounds = getattr(self.location_manager, 'geo_bounds', None) if hasattr(self, 'location_manager') else None
+            
+        #     # Generate new orders using the OrderGenerator
+        #     new_orders = self.order_generator.generate_orders(current_time, restaurants, geo_bounds)
+        #     self.active_orders.extend(new_orders)
+            
+        #     # Sync the next_order_id
+        #     self.next_order_id = self.order_generator.next_order_id
+
+
+        # Check if we have an OrderGenerator
         if hasattr(self, 'order_generator'):
             # Get geo_bounds if available for coordinate conversion
             geo_bounds = getattr(self.location_manager, 'geo_bounds', None) if hasattr(self, 'location_manager') else None
             
             # Generate new orders using the OrderGenerator
             new_orders = self.order_generator.generate_orders(current_time, restaurants, geo_bounds)
-            self.active_orders.extend(new_orders)
             
-            # Sync the next_order_id
-            self.next_order_id = self.order_generator.next_order_id
+            if new_orders:  # Check that orders were actually generated
+                self.active_orders.extend(new_orders)
+                
+                # Sync the next_order_id
+                self.next_order_id = self.order_generator.next_order_id
+
         
         # Otherwise use the basic Poisson process
         else:

@@ -62,7 +62,9 @@ class OrderGenerator:
         self.next_order_time = 0
         self.simulation_start_time = None
         self.real_order_index = 0
-        
+        self.next_order_time = 0  # Will be used for pattern mode
+
+
         # If using replay mode, preprocess real orders
         if mode == "replay" and real_orders_df is not None:
             self._preprocess_real_orders()
@@ -87,7 +89,6 @@ class OrderGenerator:
         # Reset index to access by position
         self.real_orders_df = self.real_orders_df.reset_index(drop=True)
 
-
     def reset(self):
         """Reset generator state for a new simulation"""
         self.next_order_time = 0
@@ -107,18 +108,32 @@ class OrderGenerator:
             # Default Poisson process
             # Just generate one order at the exact time requested
             new_orders.append(self._generate_random_order(current_time, restaurants))
-            
+                            
         elif self.mode == "pattern":
-            # Time-varying Poisson process - generate one order
-            # Calculate hour of day (0-23)
+            # Time-varying Poisson process - allow multiple orders
             hour = int((current_time / 60.0) % 24)
             
             # Get rate multiplier for current hour
             hourly_rate = self.temporal_pattern.get(hour, 1.0)
             
-            # Generate the order
-            new_orders.append(self._generate_random_order(current_time, restaurants))
+            # Calculate adjusted mean interarrival time
+            adjusted_mean_interarrival = self.mean_interarrival_time / hourly_rate
             
+            # Only initialize next_order_time if this is the first call
+            if self.next_order_time <= 0:
+                self.next_order_time = current_time
+            
+            # Generate orders until we exceed current_time
+            orders_generated = 0
+            while self.next_order_time <= current_time:
+                # Generate an order at the exact next_order_time
+                new_orders.append(self._generate_random_order(self.next_order_time, restaurants))
+                orders_generated += 1
+                
+                # Calculate time for next order
+                interarrival_time = np.random.exponential(adjusted_mean_interarrival)
+                self.next_order_time += interarrival_time
+
         elif self.mode == "replay":
             # Replay real orders (this already handles multiple orders)
             while (self.real_order_index < len(self.real_orders_df) and 
@@ -135,14 +150,6 @@ class OrderGenerator:
                 self.real_order_index += 1
         
         return new_orders
-
-
-
-
-
-
-
-
     
     def _generate_random_order(self, current_time, restaurants):
         """Generate a random order"""
@@ -179,6 +186,7 @@ class OrderGenerator:
         self.next_order_id += 1
         return order
         
+
     def _create_order_from_real_data(self, order_row, current_time, restaurants, geo_bounds):
         """Create an order using real data from the Meituan dataset"""
         from datatypes import Order, Location, Node

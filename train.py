@@ -1,4 +1,5 @@
 from environment.meituan_data.meituan_data_config import MeituanDataConfig
+from environment.order_generator import OrderGenerator
 from models.aca_policy.aca_policy import ACA
 from models.fastest_bundling.fastest_bundler import FastestBundler
 from models.fastest_vehicle.fastest_vehicle import FastestVehicleSolver
@@ -26,16 +27,46 @@ hourly_pattern = {
     ]
 }
 
+# Lunch dinner pattern for 24 hours
+# lunch_dinner_pattern = {
+#     'type': 'hourly',
+#     'hourly_rates': {
+#         0: 0.21, 1: 0.13, 2: 0.08, 3: 0.05, 4: 0.04, 5: 0.04, 6: 0.12, 7: 0.24,
+#         8: 0.41, 9: 0.53, 10: 1.59, 11: 4.38, 12: 2.38, 13: 1.15, 14: 0.84,
+#         15: 0.76, 16: 1.00, 17: 2.25, 18: 2.86, 19: 1.94, 20: 1.23, 21: 0.85,
+#         22: 0.55, 23: 0.37
+#     }
+# }
+
+# Lunch dinner pattern for 12 hours, starting at 10 a.m
 lunch_dinner_pattern = {
-    'type': 'custom_periods',
-    'custom_periods': [
-        (0.0, 0.2, 0.2),    # Early morning: 20% of base rate
-        (0.2, 0.3, 1.0),    # Late morning: 100% of base rate
-        (0.3, 0.45, 3.0),   # Lunch peak: 300% of base rate
-        (0.45, 0.6, 0.7),   # Afternoon: 70% of base rate
-        (0.6, 0.8, 2.5),    # Dinner peak: 250% of base rate
-        (0.8, 1.0, 0.5),    # Late night: 50% of base rate
-    ]
+    'type': 'hourly',
+    'hourly_rates': {
+        0: 1.59,  # Maps to 10:00
+        1: 4.38,  # Maps to 11:00
+        2: 2.38,  # Maps to 12:00
+        3: 1.15,  # Maps to 13:00
+        4: 0.84,  # Maps to 14:00
+        5: 0.76,  # Maps to 15:00
+        6: 1.00,  # Maps to 16:00
+        7: 2.25,  # Maps to 17:00
+        8: 2.86,  # Maps to 18:00
+        9: 1.94,  # Maps to 19:00
+        10: 1.23, # Maps to 20:00
+        11: 0.85,  # Maps to 21:00
+        12: 0.55, # Maps to 22:00
+        13: 0.37,  # Maps to 23:00
+        14: 0.21, # Maps to 00:00
+        15: 0.13, # Maps to 01:00
+        16: 0.08, # Maps to 02:00
+        17: 0.05, # Maps to 03:00
+        18: 0.04, # Maps to 04:00
+        19: 0.04, # Maps to 05:00
+        20: 0.12, # Maps to 06:00
+        21: 0.24, # Maps to 07:00
+        22: 0.41, # Maps to 08:00
+        23: 0.53  # Maps to 09:00
+    }
 }
 
 
@@ -215,6 +246,7 @@ def run_test_episode(
             "seed": seed,
             "reposition_idle_vehicles": reposition_idle_vehicles,
             "visualize": visualize,
+
         }
     )
     
@@ -234,6 +266,22 @@ def run_test_episode(
     # Apply Meituan data configuration to environment
     if meituan_config is not None:
         meituan_config.apply_to_environment(env)
+
+    if meituan_config is not None:
+        if hasattr(meituan_config, 'order_generation_mode') and meituan_config.order_generation_mode == 'pattern':
+            if hasattr(meituan_config, 'temporal_pattern'):
+                # Create a new order generator with the pattern
+                order_generator = OrderGenerator(
+                    mean_interarrival_time=env.order_manager.mean_interarrival_time,
+                    service_area_dimensions=env.order_manager.service_area,
+                    delivery_window=env.order_manager.delivery_window,
+                    service_time=env.order_manager.service_time,
+                    mean_prep_time=env.order_manager.mean_prep_time,
+                    prep_time_var=env.order_manager.prep_time_var,
+                    mode="pattern",
+                    temporal_pattern=meituan_config.temporal_pattern.get('hourly_rates', {})
+                )
+                env.order_manager.set_order_generator(order_generator)
 
     # Reset the environment to properly initialize
     state = env.reset()
@@ -320,29 +368,42 @@ def run_test_episode(
         else:
             route_plan, postponed_orders = solver.solve(prepare_solver_input(state))
 
-        detect_bundles(route_plan, state, episode_stats)  # Add this line
+        detect_bundles(route_plan, state, episode_stats)
         next_state, reward, done, info = env.step((route_plan, postponed_orders))
 
     # ------------------------- Reinfocement Learning -----------------------------
-
+        # # Check for delivered orders if we're using RL
+        # if solver_name == "rl_aca" and hasattr(solver, 'postponement') and hasattr(solver.postponement, 'record_order_delivery'):
+        #     # Get delivered orders from info
+        #     for order_id in info.get("delivered_orders", set()):
+        #         # Find delivered order to get delay
+        #         delivered_order = next((o for o in next_state.orders if o.id == order_id), None)
+        #         if not delivered_order:
+        #             delivered_order = next((o for o in state.orders if o.id == order_id), None)
+                
+        #         if delivered_order:
+        #             # Calculate actual delay (difference between delivery time and deadline)
+        #             actual_delay = max(0, delivered_order.delivery_time - delivered_order.deadline)
+                    
+        #             # Record delivery with final delay
+        #             solver.postponement.record_order_delivery(order_id, actual_delay, state.time)
+        #             # Log the delivery
+        #             # logging.debug(f"Recorded delivery for order {order_id} with final delay: {actual_delay:.2f}")
 
         # Check for delivered orders if we're using RL
         if solver_name == "rl_aca" and hasattr(solver, 'postponement') and hasattr(solver.postponement, 'record_order_delivery'):
-            # Get delivered orders from info
             for order_id in info.get("delivered_orders", set()):
-                # Find delivered order to get delay
                 delivered_order = next((o for o in next_state.orders if o.id == order_id), None)
                 if not delivered_order:
                     delivered_order = next((o for o in state.orders if o.id == order_id), None)
-                
                 if delivered_order:
-                    # Calculate actual delay (difference between delivery time and deadline)
                     actual_delay = max(0, delivered_order.delivery_time - delivered_order.deadline)
-                    
-                    # Record delivery with final delay
-                    solver.postponement.record_order_delivery(order_id, actual_delay, state.time)
+                    # Check if the order was bundled
+                    was_bundled = order_id in episode_stats["bundled_orders"]
+                    # Pass the bundling information to record_order_delivery
+                    solver.postponement.record_order_delivery(order_id, actual_delay, state.time, was_bundled=was_bundled)
                     # Log the delivery
-                    # logging.debug(f"Recorded delivery for order {order_id} with final delay: {actual_delay:.2f}")
+                    # print(f"Recorded delivery for order {order_id} with final delay: {actual_delay:.2f}, was_bundled: {was_bundled}")
 
     # ------------------------- Reinfocement Learning -----------------------------
 
@@ -1142,16 +1203,16 @@ def get_env_config(movement_per_step):
     """Environment configuration with explanatory documentation"""
     return {
         # System size parameters
-        "num_restaurants": 30,  # Production: 110 restaurants in system
-        "num_vehicles": 30,  # Production: 15 delivery vehicles
+        "num_restaurants": 5,  # Production: 110 restaurants in system
+        "num_vehicles": 5,  # Production: 15 delivery vehicles
         # Time parameters
         "mean_prep_time": 13.0,  # Gamma distributed preparation time (minutes) -> maybe should be Standard dist?
         "prep_time_var": 2.0,  # Preparation time variance (COV: 0.0-0.6)
         "delivery_window": 40,  # Delivery time window (minutes)
-        "simulation_duration": 420,  # 420 # Total simulation time (minutes)
+        "simulation_duration": 660,  # 420 # Total simulation time (minutes)
         "cooldown_duration": 0,  # No new orders in final period (minutes)
         # Workload parameters
-        "mean_interarrival_time": 0.65,  # Order frequency:
+        "mean_interarrival_time": 20,  # Order frequency:
         # Light: 1.5 orders/hr/vehicle (180 total)
         # Normal: 2.0 orders/hr/vehicle (240 total)
         # Heavy: 2.5 orders/hr/vehicle (300 total)
@@ -1169,7 +1230,7 @@ def get_env_config(movement_per_step):
         # Optional behavior flags (set by run_test_episode)
         "reposition_idle_vehicles": True,  # Whether vehicles reposition when idle
         "seed": None,  # Random seed for reproducibility
-        "demand_pattern": None,# e.g., lunch_dinner_pattern,  # Pass your demand pattern here
+        "demand_pattern": lunch_dinner_pattern,  # e.g., lunch_dinner_pattern,  # Pass your demand pattern here
     }
 
 
@@ -1498,7 +1559,7 @@ custom_config = MeituanDataConfig(
     use_vehicle_positions=False,            # Use random vehicle positions
     use_service_area=False,                 # Use real service area dimensions
     use_deadlines=False,                    # Use real order deadlines
-    order_generation_mode="pattern",        # default, pattern, replay
+    order_generation_mode="pattern",         # default, pattern, replay
     # None,lunch_dinner_pattern, hourly_pattern or function_pattern
     # Take mean arrival time from the env. config
     temporal_pattern=lunch_dinner_pattern,  # see comment above
@@ -1510,7 +1571,7 @@ custom_config = MeituanDataConfig(
 if __name__ == "__main__":
     logger.info("Starting test episode...")
     stats = run_test_episode(
-        solver_name="aca",
+        solver_name="fastest",
         meituan_config=custom_config,
         seed=42,
         reposition_idle_vehicles=False,

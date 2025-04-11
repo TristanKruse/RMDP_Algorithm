@@ -12,15 +12,29 @@
 
 #  Converging, Training verbessern RL:
 
-- RL verstehen, wie losses sich entwickeln, wie sich das aufs Modell auswirkt?? () -> converged nicht wirklich, bleibt nicht stabil,
+(loss tracking funktioniert noch nicht richtig, schwankt immer, sollte aber komplette Historie haben.)
+
+1. I would like to find out how the losses are developing, i.e.  I would like to somehow plot them in the end of a model run through. -> plotten im train_rl.py
+
+
+3. I would like to find out if the rewards are correctly maximized? Since currently to me it seems like we are minimizing them, we get worse and wors
+
+4. I would like to find out, if the timeout rewards are applied correctly, since they don't seem to show for some reason, in my print out statem
+
+5. I would like to find out, when the replay buffer is being eptied, making sure it's not eptied after each episode, but carries the experiences forward ...
+
+->try out higher learning rate e.g. 0.005
+
+-> Dann wieder ohne seed probieren?? -> vielleicht stattdessen, seed incrementen jede 100 episoden oder so ähnlich.
+
+
+
 - auf manchen Szenarios rl funktiniert nicht.
 - RL, algorithmus lernt schlechter zu werden, gleichzeitig steigt Volatilität
 ->Mit Grok einmal Logik hier durchgeheen, von Rewards in train.py zu rl_postponement.py etc.
 
--- loses wieder benchmarken
 
 Target Network: True DDQN uses a separate target network for next_q_values to stabilize learning, which isn't implemented here.
-
 
 ->ACA: Wie ist find vehicleund assign order implementiert?  außerdem Postponed orders am Anfang, entsprechend müsste man die am Ende eigentlich nicht mehr rausnehmen?!
 

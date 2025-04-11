@@ -1,4 +1,5 @@
 # train_rl.py - Simplified to focus on phased training
+from models.aca_policy.rl_postponement import RLPostponementDecision
 import os
 import logging
 import matplotlib.pyplot as plt
@@ -32,10 +33,10 @@ def train_rl_aca(
     start_phase: int = 0,             # Phase to start from when resuming
     start_episode: int = 0,           # Episode to start from when resuming
     exploration_start: float = 0.9,   # Initial exploration rate
-    exploration_end: float = 0.01,     # Final exploration rate
+    exploration_end: float = 0.05,     # Final exploration rate
     decay_method: str = "exponential",     # "linear" or "exponential"
-    decay_rate: float = 0.995         # For exponential decay
-):
+    decay_rate: float = 0.999         # For exponential decay
+    ):
     """
     Train the RL-based ACA solver through multiple progressive phases.
     """
@@ -65,7 +66,8 @@ def train_rl_aca(
         "rewards": [],
         "delays": [],
         "on_time_rates": [],
-        "postponement_rates": []
+        "postponement_rates": [],
+        "losses": []  # Add a list to track all losses
     }
 
     # Initialize exploration rate at the start
@@ -76,7 +78,8 @@ def train_rl_aca(
     
     # If resuming, attempt to load metrics from previous runs
     if resume_from_model:
-        metrics_file = os.path.join(model_dir, f"phased_metrics_{timestamp}.npz")
+        resume_dir = os.path.dirname(resume_from_model)
+        metrics_file = os.path.join(resume_dir, f"phased_metrics_{os.path.basename(resume_dir).split('_')[-1]}.npz")
         if os.path.exists(metrics_file):
             saved_metrics = np.load(metrics_file, allow_pickle=True)
             all_metrics = {
@@ -85,6 +88,7 @@ def train_rl_aca(
                 "delays": saved_metrics["delays"].tolist(),
                 "on_time_rates": saved_metrics["on_time_rates"].tolist(),
                 "postponement_rates": saved_metrics["postponement_rates"].tolist(),
+                "losses": saved_metrics.get("losses", []).tolist()
             }
             logger.info(f"Resuming training from phase {start_phase}, episode {start_episode}")
     
@@ -178,6 +182,31 @@ def train_rl_aca(
                 all_metrics["on_time_rates"].append(on_time_rate)
                 all_metrics["postponement_rates"].append(postponement_rate)
                 
+
+                # Extract losses from the solver and append to all_metrics["losses"]
+                try:
+                    solver = RLPostponementDecision()
+                    solver.load_model(latest_model_path)
+                    episode_losses = solver.batch_losses  # Get the losses for this episode
+                    all_metrics["losses"].extend(episode_losses)  # Append to the cumulative list
+                except Exception as e:
+                    logger.warning(f"Failed to extract losses: {e}")
+
+                # Plot losses at save intervals, overwriting the same file
+                if (episode_in_phase + 1) % save_interval == 0:
+                    loss_plot_path = os.path.join(phase_dir, "loss_plot.png")  # Single file, overwritten
+                    plot_losses(
+                        losses=all_metrics["losses"],
+                        save_path=loss_plot_path,
+                        window_size=20,
+                        phase_idx=current_phase_idx + 1,
+                        episode_idx=episode_in_phase + 1,
+                        total_steps=len(all_metrics["losses"])
+                    )
+                    logger.info(f"Updated loss plot at {loss_plot_path}")
+
+
+
                 # Update progress bar with key metrics             
                 pbar.set_postfix({
                     'reward': f"{reward:.2f}".ljust(10), 
@@ -281,6 +310,7 @@ def train_rl_aca(
     logger.info(f"Phased training completed. Final model saved to {final_model_path}")
     return final_model_path
 
+
 def check_phase_criteria(
     phase_metrics: Dict,
     episode_count: int,
@@ -366,6 +396,7 @@ def check_phase_criteria(
     # All criteria met
     return True, "All criteria met"
 
+
 def plot_phase_results(metrics, phase_idx, phase_name, output_dir, timestamp):
     """Plot results for a single training phase with trend lines."""
     plt.figure(figsize=(15, 10))
@@ -426,6 +457,7 @@ def plot_phase_results(metrics, phase_idx, phase_name, output_dir, timestamp):
     plt.tight_layout()
     plt.savefig(os.path.join(output_dir, f"phase{phase_idx+1}_results_{timestamp}.png"), dpi=300)
     plt.close()
+
 
 def plot_training_results(metrics, phases, output_dir, timestamp):
     """Plot overall training results across all phases with trend lines."""
@@ -507,6 +539,7 @@ def plot_training_results(metrics, phases, output_dir, timestamp):
     plt.savefig(os.path.join(output_dir, f"overall_results_{timestamp}.png"), dpi=300)
     plt.close()
 
+
 def find_latest_model(model_dir="data/models"):
     """Find the latest phased training model and its resume information."""
     if not os.path.exists(model_dir):
@@ -555,13 +588,14 @@ def find_latest_model(model_dir="data/models"):
     
     return None, 0, 0
 
+
 def evaluate_model(
     model_path: str,
     num_episodes: int = 10,
     seed: int = 100,
     visualize: bool = False,
     env_config=None,  # Added parameter for environment config
-):
+    ):
     """
     Evaluate a trained RL-ACA model over multiple episodes.
     
@@ -624,150 +658,14 @@ def evaluate_model(
     return metrics
 
 
-# def compare_models(
-#     heuristic_episodes: int = 5,
-#     rl_episodes: int = 5,
-#     rl_model_path: str = None,
-#     seed: int = 200,
-#     visualize: bool = False,
-#     env_config=None,  # Added parameter for environment config
-# ):
-#     """
-#     Compare the RL-based ACA with the original heuristic ACA.
-#     """
-#     logger.info("Comparing heuristic ACA vs RL-based ACA")
-    
-#     # Use default environment if none provided
-#     env_params = env_config or {}
-    
-#     # Run heuristic ACA episodes
-#     heuristic_metrics = {
-#         "total_rewards": [],
-#         "total_delays": [],
-#         "on_time_rates": [],
-#         "postponement_rates": []
-#     }
-    
-#     for episode in tqdm(range(heuristic_episodes), desc="Running Heuristic ACA"):
-#         stats = run_test_episode(
-#             solver_name="aca",  # Original ACA
-#             seed=seed + episode,
-#             reposition_idle_vehicles=False,
-#             visualize=visualize,
-#             env_config=env_params  # Pass as a single parameter instead of unpacking
-#         )
-        
-#         heuristic_metrics["total_rewards"].append(stats["total_reward"])
-#         heuristic_metrics["total_delays"].append(sum(stats["delay_values"]) if stats["delay_values"] else 0)
-        
-#         total_orders = max(1, stats["orders_delivered"])
-#         late_orders = len(stats["late_orders"])
-#         on_time_rate = ((total_orders - late_orders) / total_orders) * 100
-#         heuristic_metrics["on_time_rates"].append(on_time_rate)
-        
-#         postponement_rate = len(stats["postponed_orders"]) / max(1, stats["total_orders"]) * 100
-#         heuristic_metrics["postponement_rates"].append(postponement_rate)
-    
-#     # Run RL-based ACA episodes
-#     rl_metrics = {
-#         "total_rewards": [],
-#         "total_delays": [],
-#         "on_time_rates": [],
-#         "postponement_rates": []
-#     }
-    
-#     for episode in tqdm(range(rl_episodes), desc="Running RL-based ACA"):
-#         stats = run_test_episode(
-#             solver_name="rl_aca",  # RL-based ACA
-#             seed=seed + episode,
-#             reposition_idle_vehicles=False,
-#             visualize=visualize,
-#             rl_model_path=rl_model_path,
-#             exploration_rate=0.00,
-#             env_config=env_params  # Pass as a single parameter instead of unpacking
-#         )
-        
-#         rl_metrics["total_rewards"].append(stats["total_reward"])
-#         rl_metrics["total_delays"].append(sum(stats["delay_values"]) if stats["delay_values"] else 0)
-        
-#         total_orders = max(1, stats["orders_delivered"])
-#         late_orders = len(stats["late_orders"])
-#         on_time_rate = ((total_orders - late_orders) / total_orders) * 100
-#         rl_metrics["on_time_rates"].append(on_time_rate)
-        
-#         postponement_rate = len(stats["postponed_orders"]) / max(1, stats["total_orders"]) * 100
-#         rl_metrics["postponement_rates"].append(postponement_rate)
-
-#     # Calculate average metrics
-#     heuristic_avg_reward = np.mean(heuristic_metrics["total_rewards"])
-#     heuristic_avg_delay = np.mean(heuristic_metrics["total_delays"])
-#     heuristic_avg_on_time = np.mean(heuristic_metrics["on_time_rates"])
-#     heuristic_avg_postpone = np.mean(heuristic_metrics["postponement_rates"])
-    
-#     rl_avg_reward = np.mean(rl_metrics["total_rewards"])
-#     rl_avg_delay = np.mean(rl_metrics["total_delays"])
-#     rl_avg_on_time = np.mean(rl_metrics["on_time_rates"])
-#     rl_avg_postpone = np.mean(rl_metrics["postponement_rates"])
-#     logger.info("\nComparison Results:")
-#     logger.info(f"{'Metric':<25} {'Heuristic ACA':<20} {'RL-based ACA':<20} {'Improvement':<15}")
-#     logger.info(f"{'-'*70}")
-#     logger.info(f"{'Average Reward':<25} {heuristic_avg_reward:<20.2f} {rl_avg_reward:<20.2f} {((rl_avg_reward - heuristic_avg_reward) / abs(heuristic_avg_reward)) * 100:<15.2f}%")
-#     logger.info(f"{'Average Total Delay':<25} {heuristic_avg_delay:<20.2f} {rl_avg_delay:<20.2f} {((heuristic_avg_delay - rl_avg_delay) / heuristic_avg_delay) * 100:<15.2f}%")
-#     logger.info(f"{'Average On-Time Rate':<25} {heuristic_avg_on_time:<20.2f}% {rl_avg_on_time:<20.2f}% {(rl_avg_on_time - heuristic_avg_on_time):<15.2f}pp")
-#     logger.info(f"{'Postponement Rate':<25} {heuristic_avg_postpone:<20.2f}% {rl_avg_postpone:<20.2f}% {(rl_avg_postpone - heuristic_avg_postpone):<15.2f}pp")
-    
-#     # Create comparison plot
-#     plt.figure(figsize=(15, 10))
-    
-#     # Plot rewards comparison
-#     plt.subplot(2, 2, 1)
-#     plt.bar(["Heuristic", "RL"], [heuristic_avg_reward, rl_avg_reward])
-#     plt.title("Average Reward")
-#     plt.ylabel("Reward")
-    
-#     # Plot delay comparison
-#     plt.subplot(2, 2, 2)
-#     plt.bar(["Heuristic", "RL"], [heuristic_avg_delay, rl_avg_delay])
-#     plt.title("Average Total Delay")
-#     plt.ylabel("Delay (minutes)")
-    
-#     # Plot on-time rate comparison
-#     plt.subplot(2, 2, 3)
-#     plt.bar(["Heuristic", "RL"], [heuristic_avg_on_time, rl_avg_on_time])
-#     plt.title("Average On-Time Rate")
-#     plt.ylabel("On-Time Rate (%)")
-#     plt.ylim(0, 100)
-    
-#     # Plot postponement rate comparison
-#     plt.subplot(2, 2, 4)
-#     plt.bar(["Heuristic", "RL"], [heuristic_avg_postpone, rl_avg_postpone])
-#     plt.title("Postponement Rate")
-#     plt.ylabel("Postponement Rate (%)")
-#     plt.ylim(0, 100)
-    
-#     plt.tight_layout()
-    
-#     # Save plot
-#     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-#     comparison_path = f"data/models/aca_comparison_{timestamp}.png"
-#     plt.savefig(comparison_path, dpi=300)
-#     plt.close()
-    
-#     logger.info(f"\nComparison chart saved to {comparison_path}")
-#     return {
-#         "heuristic": heuristic_metrics,
-#         "rl": rl_metrics
-#     }
-
-
 def compare_models(
-    heuristic_episodes: int = 100,
-    rl_episodes: int = 100,
+    heuristic_episodes: int = 5,
+    rl_episodes: int = 5,
     rl_model_path: str = None,
     seed: int = 200,
     visualize: bool = False,
-    env_config=None,  # Added parameter for environment config
-):
+    env_config=None,  # Added parameter for environment config  
+    ):
     """
     Compare the RL-based ACA with the original heuristic ACA.
     """
@@ -961,7 +859,67 @@ def compare_models(
     }
 
 
-
+def plot_losses(losses, save_path, window_size=20, phase_idx=None, episode_idx=None, total_steps=None):
+    """
+    Plot the training losses and overwrite the existing plot.
+    
+    Args:
+        losses: List of loss values
+        save_path: Path to save the plot (will be overwritten)
+        window_size: Size of window for smoothing
+        phase_idx: Current phase index (for labeling)
+        # episode_idx: Current episode index (for labeling)
+        total_steps: Total number of training steps (for labeling)
+    """
+    import matplotlib.pyplot as plt
+    import numpy as np
+    
+    if not losses:
+        logger.warning("No loss data available to plot")
+        return
+    
+    iterations = list(range(len(losses)))
+    
+    plt.figure(figsize=(12, 6))
+    
+    # Plot raw losses
+    plt.plot(iterations, losses, 'b-', alpha=0.3, label='Raw Loss')
+    
+    # Dynamic window size: use the smaller of window_size or 10% of total steps
+    dynamic_window = min(window_size, max(1, len(losses) // 10))
+    if len(losses) > dynamic_window:
+        smoothed_losses = []
+        for i in range(len(losses) - dynamic_window + 1):
+            smoothed_losses.append(sum(losses[i:i+dynamic_window]) / dynamic_window)
+        
+        smoothed_x = list(range(dynamic_window - 1, len(losses)))
+        plt.plot(smoothed_x, smoothed_losses, 'r-', linewidth=2, 
+                label=f'Moving Average (window={dynamic_window})')
+    
+    # Add titles and labels
+    title = f'Training Loss Over Time (Total Steps: {total_steps})'
+    if phase_idx is not None and episode_idx is not None:
+        title += f'\nPhase {phase_idx}, Episode {episode_idx}'
+    plt.title(title)
+    plt.xlabel('Training Iterations')
+    plt.ylabel('Loss')
+    plt.legend()
+    plt.grid(True, alpha=0.3)
+    
+    # Add statistics
+    if len(losses) > 0:
+        recent_losses = losses[-min(100, len(losses)):]
+        plt.figtext(0.01, 0.01, 
+                    f'Recent stats (last {len(recent_losses)}):\n'
+                    f'Min: {min(recent_losses):.4f}\n'
+                    f'Max: {max(recent_losses):.4f}\n'
+                    f'Mean: {sum(recent_losses)/len(recent_losses):.4f}',
+                    fontsize=10, bbox=dict(facecolor='white', alpha=0.8))
+    
+    # Save the plot, overwriting the existing file
+    plt.savefig(save_path, dpi=300, bbox_inches='tight')
+    plt.close()
+    logger.debug(f"Loss plot updated at {save_path}")
 
 
 def define_training_phases():
@@ -976,47 +934,47 @@ def define_training_phases():
                 "num_vehicles": 5,  # Start with just 2 vehicles
                 "num_restaurants": 5,  # Limited restaurants
                 "service_area_dimensions": (4.0, 4.0),  # Small area
-                "mean_interarrival_time": 5.0,  # Low order density
+                "mean_interarrival_time": 20,  # Low order density
             },
             "performance_criteria": {
                 # No performance criteria - phase will run until max_episodes
             },
             "min_episodes": 20, 
-            "max_episodes": 10000    # More episodes for initial learning
+            "max_episodes": 1000    # More episodes for initial learning
         }
-        ,
+        # ,
         
-        # Phase 2: Intermediate Environment
-        {
-            "name": "Intermediate Environment",
-            "env_config": {
-                "num_vehicles": 15,  # Increase to 5 vehicles
-                "num_restaurants": 15,  # More restaurants
-                "service_area_dimensions": (4.0, 4.0),  # Larger area
-                "mean_interarrival_time": 1.5,  # Medium order density
-            },
-            "performance_criteria": {
-                # No performance criteria - phase will run until max_episodes
-            },
-            "min_episodes": 20,  # 30, 100
-            "max_episodes": 100   # Substantial training in intermediate complexity
-        },
+        # # Phase 2: Intermediate Environment
+        # {
+        #     "name": "Intermediate Environment",
+        #     "env_config": {
+        #         "num_vehicles": 15,  # Increase to 5 vehicles
+        #         "num_restaurants": 15,  # More restaurants
+        #         "service_area_dimensions": (4.0, 4.0),  # Larger area
+        #         "mean_interarrival_time": 1.5,  # Medium order density
+        #     },
+        #     "performance_criteria": {
+        #         # No performance criteria - phase will run until max_episodes
+        #     },
+        #     "min_episodes": 20,  # 30, 100
+        #     "max_episodes": 100   # Substantial training in intermediate complexity
+        # },
         
-        # Phase 3: Full Environment
-        {
-            "name": "Full Environment",
-            "env_config": {
-                "num_vehicles": 30,  # Full fleet
-                "num_restaurants": 30,  # All restaurants
-                "service_area_dimensions": (4.0, 4.0),  # Complete service area
-                "mean_interarrival_time": 0.65,  # High order density
-            },
-            "performance_criteria": {
-                # No performance criteria - phase will run until max_episodes
-            },
-            "min_episodes": 20,  # 50, 300
-            "max_episodes": 100   # Extensive training in full complexity
-        }
+        # # Phase 3: Full Environment
+        # {
+        #     "name": "Full Environment",
+        #     "env_config": {
+        #         "num_vehicles": 30,  # Full fleet
+        #         "num_restaurants": 30,  # All restaurants
+        #         "service_area_dimensions": (4.0, 4.0),  # Complete service area
+        #         "mean_interarrival_time": 0.65,  # High order density
+        #     },
+        #     "performance_criteria": {
+        #         # No performance criteria - phase will run until max_episodes
+        #     },
+        #     "min_episodes": 20,  # 50, 300
+        #     "max_episodes": 100   # Extensive training in full complexity
+        # }
     ]
     
     return phases
@@ -1041,7 +999,7 @@ if __name__ == "__main__":
     parser.add_argument('--initial-exploration', type=float, default=0.9, help='Initial exploration rate (default: 0.9)')
     parser.add_argument('--min-exploration', type=float, default=0.01, help='Minimum exploration rate (default: 0.05)')
     parser.add_argument('--decay-method', type=str, choices=['linear', 'exponential'], default='exponential', help='Exploration rate decay method (default: linear)')
-    parser.add_argument('--decay-rate', type=float, default=0.995, help='Decay rate for exponential decay (default: 0.995)')
+    parser.add_argument('--decay-rate', type=float, default=0.999, help='Decay rate for exponential decay (default: 0.995)')
     args = parser.parse_args()
     
     # Set seed for reproducibility
@@ -1115,10 +1073,6 @@ if __name__ == "__main__":
             decay_method=args.decay_method,
             decay_rate=args.decay_rate
         )
-
-
-
-
 
         # Always compare after training, unless explicitly turned off
         if not hasattr(args, 'no_compare') or not args.no_compare:
