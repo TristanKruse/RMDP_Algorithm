@@ -15,6 +15,7 @@ The Restaurant Meal Delivery Problem (RMDP) addresses the challenge of efficient
 
 - **Dynamic Order Processing**: Assigns orders to vehicles in real-time while optimizing routes.
 - **Routing Strategies**:
+  - **Reinforcement Learning Anticipatory Customer Assignment (RL-ACA)**: Predicts future orders for proactive routing, postpones based on a reinforcement learning algorithm.
   - **Anticipatory Customer Assignment (ACA)**: Predicts future orders for proactive routing.
   - **Fastest Vehicle Assignment**: Assigns orders to the nearest available vehicle.
   - **Order Bundling Optimization**: Groups orders to minimize delivery times.
