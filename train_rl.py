@@ -35,7 +35,19 @@ def train_rl_aca(
     exploration_start: float = 0.9,   # Initial exploration rate
     exploration_end: float = 0.05,     # Final exploration rate
     decay_method: str = "exponential",     # "linear" or "exponential"
-    decay_rate: float = 0.999         # For exponential decay
+    decay_rate: float = 0.999,         # For exponential decay
+    # RL hyperparameters
+    rl_learning_rate: float = 0.0005,
+    rl_discount_factor: float = 0.95,
+    rl_exploration_rate: float = 0.9,
+    rl_exploration_decay: float = 0.99999,
+    rl_min_exploration_rate: float = 0.2,
+    rl_batch_size: int = 64,
+    rl_target_update_frequency: int = 50,
+    rl_replay_buffer_capacity: int = 50000,
+    rl_bundling_reward: float = 0.05,
+    rl_postponement_penalty: float = -0.005,
+    rl_on_time_reward: float = 0.2
     ):
     """
     Train the RL-based ACA solver through multiple progressive phases.
@@ -149,15 +161,27 @@ def train_rl_aca(
                 # Run test episode - always save to the same latest model path
                 stats = run_test_episode(
                     solver_name="rl_aca",
-                    seed=seed + episode_in_phase,  # Different seed each episode for diversity
-                    # seed=seed,
+                    # seed=seed + episode_in_phase,  # Different seed each episode for diversity
+                    seed=seed,
                     reposition_idle_vehicles=reposition_idle_vehicles,
                     visualize=visualize and episode_in_phase % 20 == 0,
                     save_rl_model=True,
                     rl_model_path=latest_model_path,  # Always use the latest model path
                     save_results_to_disk=False,
                     env_config=env_config,
-                    exploration_rate=current_exploration_rate 
+                    exploration_rate=current_exploration_rate,
+                    # Pass RL hyperparameters
+                    rl_learning_rate=rl_learning_rate,
+                    rl_discount_factor=rl_discount_factor,
+                    rl_exploration_rate=rl_exploration_rate,
+                    rl_exploration_decay=rl_exploration_decay,
+                    rl_min_exploration_rate=rl_min_exploration_rate,
+                    rl_batch_size=rl_batch_size,
+                    rl_target_update_frequency=rl_target_update_frequency,
+                    rl_replay_buffer_capacity=rl_replay_buffer_capacity,
+                    rl_bundling_reward=rl_bundling_reward,
+                    rl_postponement_penalty=rl_postponement_penalty,
+                    rl_on_time_reward=rl_on_time_reward
                 )
                 
                 # Update metrics
@@ -212,8 +236,8 @@ def train_rl_aca(
                     'reward': f"{reward:.2f}".ljust(10), 
                     'on-time': f"{on_time_rate:.1f}%".ljust(10),
                     'delay': f"{delay:.1f}".ljust(8),
-                    'seed': f"{seed + episode_in_phase}",
-                    # 'seed': f"{seed}".ljust(6),
+                    #'seed': f"{seed + episode_in_phase}",
+                    'seed': f"{seed}".ljust(6),
                     'explore': f"{current_exploration_rate:.3f}".ljust(8),  # Add exploration rate
                     'postponed': f"{postponement_rate:.1f}%".ljust(8)
                 })
@@ -625,12 +649,12 @@ def evaluate_model(
         # Run an episode with training disabled
         stats = run_test_episode(
             solver_name="rl_aca",
-            seed=seed + episode,  # Different seed each episode 
+            seed=seed + episode,
             reposition_idle_vehicles=False,
             visualize=visualize,
             rl_model_path=model_path,
             exploration_rate=0.00,
-            **env_params  # Pass environment parameters
+            env_config=env_params  # Pass as a single dictionary
         )
         
         # Track metrics
@@ -868,11 +892,12 @@ def plot_losses(losses, save_path, window_size=20, phase_idx=None, episode_idx=N
         save_path: Path to save the plot (will be overwritten)
         window_size: Size of window for smoothing
         phase_idx: Current phase index (for labeling)
-        # episode_idx: Current episode index (for labeling)
+        episode_idx: Current episode index (for labeling)
         total_steps: Total number of training steps (for labeling)
     """
     import matplotlib.pyplot as plt
     import numpy as np
+    import os
     
     if not losses:
         logger.warning("No loss data available to plot")
@@ -916,10 +941,26 @@ def plot_losses(losses, save_path, window_size=20, phase_idx=None, episode_idx=N
                     f'Mean: {sum(recent_losses)/len(recent_losses):.4f}',
                     fontsize=10, bbox=dict(facecolor='white', alpha=0.8))
     
-    # Save the plot, overwriting the existing file
-    plt.savefig(save_path, dpi=300, bbox_inches='tight')
-    plt.close()
-    logger.debug(f"Loss plot updated at {save_path}")
+    # Save the plot with error handling and retry
+    retries = 3
+    base, ext = os.path.splitext(save_path)  # Split into 'loss_plot' and '.png'
+    for attempt in range(retries):
+        try:
+            # Use a temporary file with proper extension
+            temp_path = f"{base}_temp_{attempt}{ext}"  # e.g., 'loss_plot_temp_0.png'
+            plt.savefig(temp_path, dpi=300, bbox_inches='tight')
+            os.replace(temp_path, save_path)  # Move to final path
+            logger.debug(f"Loss plot saved to {save_path}")
+            plt.close()
+            break
+        except Exception as e:
+            logger.warning(f"Failed to save loss plot (attempt {attempt+1}/{retries}): {e}")
+            if attempt == retries - 1:
+                logger.error(f"Could not save loss plot after {retries} attempts. Continuing training.")
+                plt.close()
+                return
+    
+    plt.close()  # Ensure figure is closed
 
 
 def define_training_phases():
@@ -933,7 +974,7 @@ def define_training_phases():
             "env_config": {
                 "num_vehicles": 5,  # Start with just 2 vehicles
                 "num_restaurants": 5,  # Limited restaurants
-                "service_area_dimensions": (4.0, 4.0),  # Small area
+                "service_area_dimensions": (6.0, 6.0),  # Small area
                 "mean_interarrival_time": 20,  # Low order density
             },
             "performance_criteria": {
@@ -942,39 +983,39 @@ def define_training_phases():
             "min_episodes": 20, 
             "max_episodes": 1000    # More episodes for initial learning
         }
-        # ,
+        ,
         
-        # # Phase 2: Intermediate Environment
-        # {
-        #     "name": "Intermediate Environment",
-        #     "env_config": {
-        #         "num_vehicles": 15,  # Increase to 5 vehicles
-        #         "num_restaurants": 15,  # More restaurants
-        #         "service_area_dimensions": (4.0, 4.0),  # Larger area
-        #         "mean_interarrival_time": 1.5,  # Medium order density
-        #     },
-        #     "performance_criteria": {
-        #         # No performance criteria - phase will run until max_episodes
-        #     },
-        #     "min_episodes": 20,  # 30, 100
-        #     "max_episodes": 100   # Substantial training in intermediate complexity
-        # },
+        # Phase 2: Intermediate Environment
+        {
+            "name": "Intermediate Environment",
+            "env_config": {
+                "num_vehicles": 15,  # Increase to 5 vehicles
+                "num_restaurants": 15,  # More restaurants
+                "service_area_dimensions": (6.0, 6.0),  # Larger area
+                "mean_interarrival_time": 1.5,  # Medium order density
+            },
+            "performance_criteria": {
+                # No performance criteria - phase will run until max_episodes
+            },
+            "min_episodes": 20,  # 30, 100
+            "max_episodes": 200   # Substantial training in intermediate complexity
+        },
         
-        # # Phase 3: Full Environment
-        # {
-        #     "name": "Full Environment",
-        #     "env_config": {
-        #         "num_vehicles": 30,  # Full fleet
-        #         "num_restaurants": 30,  # All restaurants
-        #         "service_area_dimensions": (4.0, 4.0),  # Complete service area
-        #         "mean_interarrival_time": 0.65,  # High order density
-        #     },
-        #     "performance_criteria": {
-        #         # No performance criteria - phase will run until max_episodes
-        #     },
-        #     "min_episodes": 20,  # 50, 300
-        #     "max_episodes": 100   # Extensive training in full complexity
-        # }
+        # Phase 3: Full Environment
+        {
+            "name": "Full Environment",
+            "env_config": {
+                "num_vehicles": 30,  # Full fleet
+                "num_restaurants": 30,  # All restaurants
+                "service_area_dimensions": (6.0, 6.0),  # Complete service area
+                "mean_interarrival_time": 0.65,  # High order density
+            },
+            "performance_criteria": {
+                # No performance criteria - phase will run until max_episodes
+            },
+            "min_episodes": 20,  # 50, 300
+            "max_episodes": 200   # Extensive training in full complexity
+        }
     ]
     
     return phases
@@ -999,7 +1040,7 @@ if __name__ == "__main__":
     parser.add_argument('--initial-exploration', type=float, default=0.9, help='Initial exploration rate (default: 0.9)')
     parser.add_argument('--min-exploration', type=float, default=0.01, help='Minimum exploration rate (default: 0.05)')
     parser.add_argument('--decay-method', type=str, choices=['linear', 'exponential'], default='exponential', help='Exploration rate decay method (default: linear)')
-    parser.add_argument('--decay-rate', type=float, default=0.999, help='Decay rate for exponential decay (default: 0.995)')
+    parser.add_argument('--decay-rate', type=float, default=0.99, help='Decay rate for exponential decay (default: 0.995)')
     args = parser.parse_args()
     
     # Set seed for reproducibility
@@ -1069,9 +1110,18 @@ if __name__ == "__main__":
             start_phase=phase if resume else 0,
             start_episode=episode if resume else 0,
             exploration_start=args.initial_exploration,
-            exploration_end=args.min_exploration,
             decay_method=args.decay_method,
-            decay_rate=args.decay_rate
+            # Tuned RL hyperparameters
+            decay_rate=0.99,
+            rl_learning_rate=0.0003,
+            rl_batch_size=96,
+            rl_target_update_frequency=75,
+            rl_discount_factor=0.95,
+            rl_exploration_decay=0.9999,
+            exploration_end=0.05,
+            rl_bundling_reward=0.05,
+            rl_postponement_penalty=0,
+            rl_on_time_reward=0.2
         )
 
         # Always compare after training, unless explicitly turned off

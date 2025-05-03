@@ -30,6 +30,59 @@ class MeituanDataConfig:
         simulation_start_hour: int = None,
         simulation_duration_hours: int = None
     ):
+        # self.district_id = district_id
+        # self.day = day
+        # self.simulation_start_hour = simulation_start_hour
+        # self.simulation_duration_hours = simulation_duration_hours
+        # self.use_restaurant_positions = use_restaurant_positions
+        # self.use_vehicle_count = use_vehicle_count
+        # self.use_vehicle_positions = use_vehicle_positions
+        # self.use_service_area = use_service_area
+        # self.use_deadlines = use_deadlines
+
+        # # Data paths
+        # self.data_dir = os.path.join("data/meituan_data/processed/daily_orders", str(day))
+        # self.restaurant_file = os.path.join(self.data_dir, f"district_{district_id}_restaurants.csv")
+        # self.vehicle_file = os.path.join(self.data_dir, f"district_{district_id}_vehicles.csv")
+        # self.order_file = os.path.join(self.data_dir, f"district_{district_id}_orders.csv")
+        
+        # # Loaded data (initialized as None)
+        # self.restaurants_df = None
+        # self.vehicles_df = None
+        # self.orders_df = None
+        
+        # # Geographic boundaries (initialized as None)
+        # self.geo_bounds = None
+        
+        # # Validate and load data
+        # self._validate_data_files()
+        # self._load_data()
+        
+        # if self.use_service_area:
+        #     self._calculate_geo_bounds()
+
+        # # Load and store order data if needed
+        # self.orders_df = None
+        # if order_generation_mode == "replay":
+        #     if os.path.exists(self.order_file):
+        #         self.orders_df = pd.read_csv(self.order_file)
+        #         # print(f"PRINTING THE COLUMNS {self.orders_df.columns}")
+        #         # Convert timestamp columns
+        #         timestamp_cols = ['platform_order_time', 'estimate_meal_prepare_time', 
+        #                          'order_push_time', 'dispatch_time', 'grab_time', 
+        #                          'fetch_time', 'arrive_time']
+        #         for col in timestamp_cols:
+        #             if col in self.orders_df.columns:
+        #                 self.orders_df[col] = pd.to_datetime(self.orders_df[col])
+        #     else:
+        #         raise FileNotFoundError(f"Order data file not found: {self.order_file}")
+        
+        # # Store order generation config
+        # self.order_generation_mode = order_generation_mode
+        # self.temporal_pattern = temporal_pattern
+
+
+
         self.district_id = district_id
         self.day = day
         self.simulation_start_hour = simulation_start_hour
@@ -58,28 +111,38 @@ class MeituanDataConfig:
         self._validate_data_files()
         self._load_data()
         
-        if self.use_service_area:
-            self._calculate_geo_bounds()
-
-        # Load and store order data if needed
+        # Load and store order data if needed (move this before _calculate_geo_bounds)
         self.orders_df = None
         if order_generation_mode == "replay":
             if os.path.exists(self.order_file):
                 self.orders_df = pd.read_csv(self.order_file)
-                # print(f"PRINTING THE COLUMNS {self.orders_df.columns}")
-                # Convert timestamp columns
                 timestamp_cols = ['platform_order_time', 'estimate_meal_prepare_time', 
-                                 'order_push_time', 'dispatch_time', 'grab_time', 
-                                 'fetch_time', 'arrive_time']
+                                'order_push_time', 'dispatch_time', 'grab_time', 
+                                'fetch_time', 'arrive_time']
                 for col in timestamp_cols:
                     if col in self.orders_df.columns:
                         self.orders_df[col] = pd.to_datetime(self.orders_df[col])
             else:
                 raise FileNotFoundError(f"Order data file not found: {self.order_file}")
         
+        # Calculate geo bounds after loading orders_df
+        if self.use_service_area:
+            self._calculate_geo_bounds()
+
         # Store order generation config
         self.order_generation_mode = order_generation_mode
         self.temporal_pattern = temporal_pattern
+
+
+
+
+
+
+
+
+
+
+
     
     def _validate_data_files(self) -> None:
         """Validate that required data files exist."""
@@ -144,7 +207,6 @@ class MeituanDataConfig:
             "width_km": lng_km,
             "height_km": lat_km
         }
-
 
     def get_service_area_dimensions(self) -> Optional[Tuple[float, float]]:
         """Get dimensions of service area in km."""

@@ -70,6 +70,18 @@ lunch_dinner_pattern = {
 }
 
 
+# Number of active couriers per hour
+# courier_schedule_pattern = {
+#     'type': 'hourly',
+#     'hourly_rates': {
+#         0: 0.37, 1: 0.24, 2: 0.15, 3: 0.10, 4: 0.07, 5: 0.05,
+#         6: 0.07, 7: 0.20, 8: 0.36, 9: 0.53, 10: 0.81, 11: 2.04,
+#         12: 2.72, 13: 2.40, 14: 1.53, 15: 1.07, 16: 1.00, 17: 1.25,
+#         18: 1.93, 19: 2.19, 20: 1.98, 21: 1.40, 22: 0.93, 23: 0.62
+#     }
+# }
+
+
 def bimodal_demand(time_percent):
     """Generate a bimodal distribution with peaks at lunch and dinner."""
     import numpy as np
@@ -230,15 +242,100 @@ def run_test_episode(
     rl_model_path: str = None,
     save_results_to_disk=True,
     env_config: Optional[Dict] = None,
-    exploration_rate: Optional[float] = None 
+    exploration_rate: Optional[float] = None,
+    # RL hyperparameters
+    rl_learning_rate: float = 0.0005,
+    rl_discount_factor: float = 0.95,
+    rl_exploration_rate: float = 0.9,
+    rl_exploration_decay: float = 0.99999,
+    rl_min_exploration_rate: float = 0.2,
+    rl_batch_size: int = 64,
+    rl_target_update_frequency: int = 50,
+    rl_replay_buffer_capacity: int = 50000,
+    rl_bundling_reward: float = 0.05,
+    rl_postponement_penalty: float = -0.005,
+    rl_on_time_reward: float = 0.2,
+    aca_buffer: int = 15  # To override ACA buffer size, for buffer tuning
 ):
     # is_paused = False
     simulation_duration = simulation_duration = get_env_config(None)["simulation_duration"]  # 420
-    speed = 15   # 40.0 km/h in paper, 10kmh Durchschnitt in Meituan Daten, if also considering service time maybe about 15kmh
+    speed = 11.5   # 40.0 km/h in paper, 10kmh Durchschnitt in Meituan Daten, if also considering service time maybe about 15kmh
     street_network_factor = 1.0  # 1.4 in paper, we calculated the average speed over the euclidic distance, so no adjustment necessary
     movement_per_step = (speed / 60) / street_network_factor  # km per minute adjusted for street network
 
-    # Initialize environment and solver
+    # # Initialize environment and solver
+    # env_params = get_env_config(movement_per_step)
+    # cooldown_duration = env_params["cooldown_duration"]
+    # env_params.update(
+    #     {   
+    #         "seed": seed,
+    #         "reposition_idle_vehicles": reposition_idle_vehicles,
+    #         "visualize": visualize,
+
+    #     }
+    # )
+    
+    # # For bundling rate.
+    # delivered_orders_set = set()
+
+    # # Apply custom environment config if provided
+    # if env_config:
+    #     env_params.update(env_config)
+
+    # # Apply Meituan data configuration to environment parameters
+    # if meituan_config is not None:
+    #     env_params = meituan_config.apply_to_env_params(env_params)
+    
+    # if meituan_config is None or not hasattr(meituan_config, 'order_generation_mode') or meituan_config.order_generation_mode != 'pattern':
+    #     # Use default mode with parameters from env_params
+    #     order_generator = OrderGenerator(
+    #         mean_interarrival_time=env_params["mean_interarrival_time"],
+    #         service_area_dimensions=env_params["service_area_dimensions"],
+    #         delivery_window=env_params["delivery_window"],
+    #         service_time=env_params["service_time"],
+    #         mean_prep_time=env_params["mean_prep_time"],
+    #         prep_time_var=env_params["prep_time_var"],
+    #         mode="default",  # Default mode for constant arrival rate
+    #         temporal_pattern=env_params.get("demand_pattern", None)
+    #     )
+    # else:
+    #     # Use pattern-based generator if specified by meituan_config
+    #     order_generator = OrderGenerator(
+    #         mean_interarrival_time=env_params["mean_interarrival_time"],
+    #         service_area_dimensions=env_params["service_area_dimensions"],
+    #         delivery_window=env_params["delivery_window"],
+    #         service_time=env_params["service_time"],
+    #         mean_prep_time=env_params["mean_prep_time"],
+    #         prep_time_var=env_params["prep_time_var"],
+    #         mode="pattern",
+    #         temporal_pattern=meituan_config.temporal_pattern.get('hourly_rates', {})
+    #     )
+
+    # # Add the order_generator to env_params
+    # env_params["order_generator"] = order_generator
+
+    # env = RestaurantMealDeliveryEnv(**env_params)
+
+    # # Apply Meituan data configuration to environment
+    # if meituan_config is not None:
+    #     meituan_config.apply_to_environment(env)
+
+    # if meituan_config is not None:
+    #     if hasattr(meituan_config, 'order_generation_mode') and meituan_config.order_generation_mode == 'pattern':
+    #         if hasattr(meituan_config, 'temporal_pattern'):
+    #             # Create a new order generator with the pattern
+    #             order_generator = OrderGenerator(
+    #                 mean_interarrival_time=env.order_manager.mean_interarrival_time,
+    #                 service_area_dimensions=env.order_manager.service_area,
+    #                 delivery_window=env.order_manager.delivery_window,
+    #                 service_time=env.order_manager.service_time,
+    #                 mean_prep_time=env.order_manager.mean_prep_time,
+    #                 prep_time_var=env.order_manager.prep_time_var,
+    #                 mode="pattern",
+    #                 temporal_pattern=meituan_config.temporal_pattern.get('hourly_rates', {})
+    #             )
+    #             env.order_manager.set_order_generator(order_generator)
+
     env_params = get_env_config(movement_per_step)
     cooldown_duration = env_params["cooldown_duration"]
     env_params.update(
@@ -246,10 +343,9 @@ def run_test_episode(
             "seed": seed,
             "reposition_idle_vehicles": reposition_idle_vehicles,
             "visualize": visualize,
-
         }
     )
-    
+
     # For bundling rate.
     delivered_orders_set = set()
 
@@ -260,33 +356,95 @@ def run_test_episode(
     # Apply Meituan data configuration to environment parameters
     if meituan_config is not None:
         env_params = meituan_config.apply_to_env_params(env_params)
-    
+
+    # Create the environment
     env = RestaurantMealDeliveryEnv(**env_params)
 
-    # Apply Meituan data configuration to environment
+    # Apply Meituan data configuration to environment (if any additional setup is needed)
     if meituan_config is not None:
         meituan_config.apply_to_environment(env)
 
-    if meituan_config is not None:
-        if hasattr(meituan_config, 'order_generation_mode') and meituan_config.order_generation_mode == 'pattern':
-            if hasattr(meituan_config, 'temporal_pattern'):
-                # Create a new order generator with the pattern
-                order_generator = OrderGenerator(
-                    mean_interarrival_time=env.order_manager.mean_interarrival_time,
-                    service_area_dimensions=env.order_manager.service_area,
-                    delivery_window=env.order_manager.delivery_window,
-                    service_time=env.order_manager.service_time,
-                    mean_prep_time=env.order_manager.mean_prep_time,
-                    prep_time_var=env.order_manager.prep_time_var,
-                    mode="pattern",
-                    temporal_pattern=meituan_config.temporal_pattern.get('hourly_rates', {})
-                )
-                env.order_manager.set_order_generator(order_generator)
+    # Create and set the order generator
+    if meituan_config is None or not hasattr(meituan_config, 'order_generation_mode') or meituan_config.order_generation_mode != 'pattern':
+        # Use default mode with parameters from env_params
+        order_generator = OrderGenerator(
+            mean_interarrival_time=env_params["mean_interarrival_time"],
+            service_area_dimensions=env_params["service_area_dimensions"],
+            delivery_window=env_params["delivery_window"],
+            service_time=env_params["service_time"],
+            mean_prep_time=env_params["mean_prep_time"],
+            prep_time_var=env_params["prep_time_var"],
+            mode="default",  # Default mode for constant arrival rate
+            temporal_pattern=env_params.get("demand_pattern", None)
+        )
+    else:
+        # Use pattern-based generator if specified by meituan_config
+        order_generator = OrderGenerator(
+            mean_interarrival_time=env_params["mean_interarrival_time"],
+            service_area_dimensions=env_params["service_area_dimensions"],
+            delivery_window=env_params["delivery_window"],
+            service_time=env_params["service_time"],
+            mean_prep_time=env_params["mean_prep_time"],
+            prep_time_var=env_params["prep_time_var"],
+            mode="pattern",
+            temporal_pattern=meituan_config.temporal_pattern.get('hourly_rates', {})
+        )
+
+    # Set the order generator on the order manager
+    env.order_manager.set_order_generator(order_generator)
+
 
     # Reset the environment to properly initialize
     state = env.reset()
 
     logging.info(f"Starting simulation with solver: {solver_name}")
+
+    # Update SOLVERS dictionary to pass RL hyperparameters
+    global SOLVERS
+    SOLVERS = {
+        "aca": lambda movement_per_step, location_manager: ACA(
+            location_manager=location_manager,
+            buffer=aca_buffer,
+            max_postponements=0,
+            max_postpone_time=0,
+            vehicle_capacity=5,
+            service_time=4.0,
+            mean_prep_time=13,
+            delivery_window=40.0,
+            postponement_method="heuristic",
+        ),
+        "rl_aca": lambda movement_per_step, location_manager: ACA(
+            location_manager=location_manager,
+            buffer=15,
+            max_postponements=3,
+            max_postpone_time=10,
+            vehicle_capacity=3,
+            service_time=2.0,
+            mean_prep_time=13,
+            delivery_window=40.0,
+            postponement_method="rl-aca",
+            rl_training_mode=True,
+            rl_state_size=6,
+            rl_learning_rate=rl_learning_rate,
+            rl_discount_factor=rl_discount_factor,
+            rl_exploration_rate=rl_exploration_rate,
+            rl_exploration_decay=rl_exploration_decay,
+            rl_min_exploration_rate=rl_min_exploration_rate,
+            rl_batch_size=rl_batch_size,
+            rl_target_update_frequency=rl_target_update_frequency,
+            rl_replay_buffer_capacity=rl_replay_buffer_capacity,
+            rl_bundling_reward=rl_bundling_reward,
+            rl_postponement_penalty=rl_postponement_penalty,
+            rl_on_time_reward=rl_on_time_reward
+        ),
+        "bundler": lambda s, loc_manager: FastestBundler(
+            movement_per_step=s,
+            location_manager=loc_manager,
+            max_bundle_size=3,
+        ),
+        "fastest": lambda s, loc_manager: FastestVehicleSolver(movement_per_step=s, location_manager=loc_manager),
+    }
+    
     # solver = SOLVERS[solver_name](movement_per_step)
     solver = SOLVERS[solver_name](movement_per_step, env.location_manager)
 
@@ -519,6 +677,25 @@ def run_test_episode(
 
         state = next_state
         step += 1
+
+    # Handle undelivered orders at the end of the simulation
+    if solver_name == "rl_aca" and hasattr(solver, 'postponement') and hasattr(solver.postponement, 'record_order_delivery'):
+        undelivered_orders = set()
+        # Identify undelivered orders by checking orders that are not in delivered_orders_set
+        for order in state.orders:
+            if order.id not in delivered_orders_set:
+                undelivered_orders.add(order.id)
+
+        logger.info(f"Processing {len(undelivered_orders)} undelivered orders at simulation end (time: {state.time})")
+        for order_id in undelivered_orders:
+            order = next((o for o in state.orders if o.id == order_id), None)
+            if order:
+                # Calculate the current delay as the difference between the current time and the deadline
+                current_delay = max(0, state.time - order.deadline)
+                was_bundled = order_id in episode_stats["bundled_orders"]
+                solver.postponement.record_order_delivery(order_id, current_delay, state.time, was_bundled=was_bundled)
+                logger.debug(f"Undelivered order {order_id}: delay={current_delay:.2f}, was_bundled={was_bundled}")
+
     # Save results
     episode_stats["total_reward"] = total_reward
 
@@ -1206,21 +1383,21 @@ def get_env_config(movement_per_step):
         "num_restaurants": 5,  # Production: 110 restaurants in system
         "num_vehicles": 5,  # Production: 15 delivery vehicles
         # Time parameters
-        "mean_prep_time": 13.0,  # Gamma distributed preparation time (minutes) -> maybe should be Standard dist?
+        "mean_prep_time": 13.4,  # Gamma distributed preparation time (minutes)
         "prep_time_var": 2.0,  # Preparation time variance (COV: 0.0-0.6)
-        "delivery_window": 40,  # Delivery time window (minutes)
-        "simulation_duration": 660,  # 420 # Total simulation time (minutes)
+        "delivery_window": 35,  # Delivery time window (minutes)
+        "simulation_duration": 600,  # 420 # Total simulation time (minutes)
         "cooldown_duration": 0,  # No new orders in final period (minutes)
         # Workload parameters
-        "mean_interarrival_time": 20,  # Order frequency:
+        "mean_interarrival_time": 8,  # Order frequency:
         # Light: 1.5 orders/hr/vehicle (180 total)
         # Normal: 2.0 orders/hr/vehicle (240 total)
         # Heavy: 2.5 orders/hr/vehicle (300 total)
         # Here: 60/(2.5 orders/hr/vehicle * 15 vehicles)
         # But here lower = more orders
         # Area parameters
-        "service_area_dimensions": (4.0, 4.0),  # 10km x 10km area
-        "downtown_concentration": 0.7,  # Restaurant concentration downtown
+        "service_area_dimensions": (6.0, 6.0),  # 10km x 10km area
+        "downtown_concentration": 0.71,  # Restaurant concentration downtown
         # Service parameters
         "service_time": 4.0,  # Time at pickup/delivery locations
         "movement_per_step": movement_per_step,
@@ -1513,10 +1690,10 @@ SOLVERS = {
         # Core algorithm parameters
         buffer=15,
         max_postponements=0,
-        max_postpone_time=10,
+        max_postpone_time=0,
         # Time & Vehicle parameters
-        vehicle_capacity=10,     # test 5 
-        service_time=2.0,
+        vehicle_capacity=5,     # test 5 
+        service_time=4.0,
         mean_prep_time=13,
         delivery_window=40.0,   # assumed to be the same for all orders, would potentially have to be adjusted.
         # Default to heuristic postponement
@@ -1539,8 +1716,16 @@ SOLVERS = {
         postponement_method="rl-aca",  # rl
         rl_training_mode=True,  # Change this to False for evaluation
         rl_state_size=6,
-        rl_max_order_age=200,
-        rl_timeout_reward=-160,
+        rl_learning_rate=0.0005,
+        rl_batch_size=64,
+        rl_target_update_frequency=50,
+        rl_discount_factor=0.95,
+        rl_exploration_decay=0.99999,
+        rl_min_exploration_rate=0.2,
+        rl_replay_buffer_capacity=50000,
+        rl_bundling_reward=0.05,
+        rl_postponement_penalty=-0.005,
+        rl_on_time_reward=0.2
     ),
     "bundler": lambda s, loc_manager: FastestBundler(
         movement_per_step=s,
@@ -1552,12 +1737,12 @@ SOLVERS = {
 
 
 custom_config = MeituanDataConfig(
-    district_id=10,                         # Districts 1 to 22
+    district_id=10,                          # Districts 1 to 22
     day="20221018",                         # Specify district 20221017 to 20221024
-    use_restaurant_positions=False,         # Use real restaurant positions
+    use_restaurant_positions=False,          # Use real restaurant positions
     use_vehicle_count=False,                # Use real number of vehicles
     use_vehicle_positions=False,            # Use random vehicle positions
-    use_service_area=False,                 # Use real service area dimensions
+    use_service_area=False,                  # Use real service area dimensions
     use_deadlines=False,                    # Use real order deadlines
     order_generation_mode="pattern",         # default, pattern, replay
     # None,lunch_dinner_pattern, hourly_pattern or function_pattern
@@ -1571,11 +1756,11 @@ custom_config = MeituanDataConfig(
 if __name__ == "__main__":
     logger.info("Starting test episode...")
     stats = run_test_episode(
-        solver_name="fastest",
+        solver_name="aca",
         meituan_config=custom_config,
         seed=42,
         reposition_idle_vehicles=False,
-        visualize=False,
+        visualize=True,
         warmup_duration=0,
     )
     logger.info("\nTest completed!")

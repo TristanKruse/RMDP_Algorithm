@@ -6,28 +6,28 @@
     I. Benchmarken fastest ACA,
     II. Benchmarken best ACA
     III. Benchmarken simple value function
-    IV. Multiple Objective value fucntion
+    IV. Multiple Objective value function
 4. Ergebnisse aufschreiben, Graphen etc.
 
 
 #  Converging, Training verbessern RL:
 
-(loss tracking funktioniert noch nicht richtig, schwankt immer, sollte aber komplette Historie haben.)
+-> Courier scheduling implementieren.
+-> Überlegen, ob doch variierende Speeds, wenn jetzt größere Delivery Area.
 
-1. I would like to find out how the losses are developing, i.e.  I would like to somehow plot them in the end of a model run through. -> plotten im train_rl.py
+-> ggf. Simulation bei Dispatch records anfangen, sodass hier die original Positionen genommen werden können? (problem, einige haben auch schon orders)
+
+-> Letzten endes kann man nicht die ganze stochasticity von Meituan capturen, man muss sich fokussieren.
 
 
-3. I would like to find out if the rewards are correctly maximized? Since currently to me it seems like we are minimizing them, we get worse and wors
 
-4. I would like to find out, if the timeout rewards are applied correctly, since they don't seem to show for some reason, in my print out statem
+-> Postponement kann auch dafür sorgen, dass besseres vehicle assigned wird. (weil es dann freigworden ist)
+-> Stochasticity auch bei der Deadline.
 
-5. I would like to find out, when the replay buffer is being eptied, making sure it's not eptied after each episode, but carries the experiences forward ...
+(RL, muss im Grunde zwei Hürden nehmen, erst merken, dass postponement negativen einfluss hat und dann herausfinden, in welchen Ausnahmen positive Effekte eintreten)
 
-->try out higher learning rate e.g. 0.005
 
 -> Dann wieder ohne seed probieren?? -> vielleicht stattdessen, seed incrementen jede 100 episoden oder so ähnlich.
-
-
 
 - auf manchen Szenarios rl funktiniert nicht.
 - RL, algorithmus lernt schlechter zu werden, gleichzeitig steigt Volatilität
@@ -89,7 +89,6 @@ coordinates and the orders they are presently carrying, can be retrieved from Ta
 
 Notes:
 ->assumed delivery window is between 10 and 120 minutes, otherwise use default gamma dist.  (see order generator)
-->vehicle capacities ...
 ->ggf. vehicles langsamer machen
 ->Limiting permutations, when bigger 4 (see route_utils), um es computationally thesable zu machen.
 ->Aca hyperparameters relevant, v.a. auch, wie lange maximal postponed werden darf, bei 15 min. signifikant schlechtere Ergebnisse wie bei 10 min.

@@ -50,9 +50,19 @@ class ACA:
         rl_training_mode: bool = True,
         rl_state_size: int = 6,
         rl_model_path: str = None,
-        rl_max_order_age: int = 200,  # Maximum time to track an order (minutes)
-        rl_timeout_reward: float = -160.0  # Reward for timed-out orders
-    ):
+        # Additional RL hyperparameters for tuning
+        rl_learning_rate: float = 0.0005,
+        rl_discount_factor: float = 0.95,
+        rl_exploration_rate: float = 0.9,
+        rl_exploration_decay: float = 0.99999,
+        rl_min_exploration_rate: float = 0.2,
+        rl_batch_size: int = 64,
+        rl_target_update_frequency: int = 50,
+        rl_replay_buffer_capacity: int = 50000,
+        rl_bundling_reward: float = 0.05,
+        rl_postponement_penalty: float = -0.005,
+        rl_on_time_reward: float = 0.2
+        ):
         self.buffer = buffer
         self.max_postponements = max_postponements
         self.max_postpone_time = max_postpone_time
@@ -68,12 +78,6 @@ class ACA:
             service_time=service_time,
             location_manager=location_manager
         )
-
-        # # Initialize component handlers with relevant parameters
-        # self.postponement = PostponementHandler(
-        #     max_postponements=max_postponements,
-        #     max_postpone_time=max_postpone_time,
-        # )
 
         self.vehicle_ops = VehicleOperations(
             service_time=service_time,
@@ -92,10 +96,20 @@ class ACA:
             logger.info("Using heuristic-based postponement method")
         else:  # "rl"
             self.postponement = RLPostponementDecision(
+                learning_rate=rl_learning_rate,
+                discount_factor=rl_discount_factor,
+                exploration_rate=rl_exploration_rate,
+                exploration_decay=rl_exploration_decay,
+                min_exploration_rate=rl_min_exploration_rate,
+                batch_size=rl_batch_size,
                 training_mode=rl_training_mode,
                 state_size=rl_state_size,
-                max_order_age=rl_max_order_age,
-                timeout_reward=rl_timeout_reward,
+                lns_sample_size=5,
+                target_update_frequency=rl_target_update_frequency,
+                replay_buffer_capacity=rl_replay_buffer_capacity,
+                bundling_reward=rl_bundling_reward,
+                postponement_penalty=rl_postponement_penalty,
+                on_time_reward=rl_on_time_reward
             )
             # Load pre-trained model if path is provided
             if rl_model_path and not rl_training_mode:

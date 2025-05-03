@@ -4,15 +4,15 @@ import train_rl
 
 def run_hyperparameter_tuning(num_experiments=20, episodes_per_experiment=500):
     hyperparameter_space = {
-        "learning_rate": [0.0003, 0.0004, 0.0005],
+        "learning_rate": [0.0001, 0.0002, 0.0003, 0.0004, 0.0005],
         "batch_size": [32, 64, 96],
         "target_update_frequency": [25, 50, 75],
-        "discount_factor": [0.9, 0.95],
-        "exploration_decay": [0.99999, 0.999995],
-        "min_exploration_rate": [0.2, 0.3],
-        "bundling_reward": [0.05],
-        "postponement_penalty": [-0.005],
-        "on_time_reward": [0.2]
+        "discount_factor": [0.9, 0.95, 0.99],
+        "exploration_decay": [0.99],  # adjusted for faster decay
+        "min_exploration_rate": [0.05, 0.01],
+        "bundling_reward": [0.05, 0],
+        "postponement_penalty": [-0.005, 0],
+        "on_time_reward": [0.2, 0]
     }
 
     results = []
