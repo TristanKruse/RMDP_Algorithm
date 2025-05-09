@@ -1,0 +1,539 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   viewBox="0 0 1000 650"
+   version="1.1"
+   id="svg47"
+   sodipodi:docname="Reward_Calculation.svg"
+   inkscape:version="1.4 (86a8ad7, 2024-10-11)"
+   inkscape:export-filename="Reward_Calculation.png"
+   inkscape:export-xdpi="300"
+   inkscape:export-ydpi="300"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <defs
+     id="defs47" />
+  <sodipodi:namedview
+     id="namedview47"
+     pagecolor="#ffffff"
+     bordercolor="#000000"
+     borderopacity="0.25"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     inkscape:zoom="1.31957"
+     inkscape:cx="489.93233"
+     inkscape:cy="427.03305"
+     inkscape:window-width="2400"
+     inkscape:window-height="1494"
+     inkscape:window-x="-11"
+     inkscape:window-y="-11"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="svg47" />
+  <!-- Background -->
+  <rect
+     width="1000"
+     height="800"
+     fill="#f9f9f9"
+     id="rect1"
+     x="0.34351489"
+     y="2.7737508"
+     style="stroke-width:1.1094" />
+  <!-- Title -->
+  <text
+     x="500"
+     y="40"
+     font-family="Arial"
+     font-size="24"
+     font-weight="bold"
+     text-anchor="middle"
+     id="text1">Order Delay and Reward Calculation</text>
+  <!-- Timeline -->
+  <line
+     x1="100"
+     y1="200"
+     x2="900"
+     y2="200"
+     stroke="#333"
+     stroke-width="3"
+     id="line1" />
+  <line
+     x1="96.784828"
+     y1="329.80215"
+     x2="896.78485"
+     y2="329.80215"
+     stroke="#333333"
+     stroke-width="3"
+     id="line2" />
+  <!-- Time markers -->
+  <line
+     x1="100"
+     y1="190"
+     x2="100"
+     y2="210"
+     stroke="#333"
+     stroke-width="2"
+     id="line3" />
+  <line
+     x1="300"
+     y1="190"
+     x2="300"
+     y2="210"
+     stroke="#333"
+     stroke-width="2"
+     id="line4" />
+  <line
+     x1="392.38919"
+     y1="190"
+     x2="392.38919"
+     y2="210"
+     stroke="#333333"
+     stroke-width="2"
+     id="line5" />
+  <line
+     x1="700"
+     y1="190"
+     x2="700"
+     y2="210"
+     stroke="#333"
+     stroke-width="2"
+     id="line6" />
+  <line
+     x1="900"
+     y1="190"
+     x2="900"
+     y2="210"
+     stroke="#333"
+     stroke-width="2"
+     id="line7" />
+  <line
+     x1="96.784828"
+     y1="319.80215"
+     x2="96.784828"
+     y2="339.80215"
+     stroke="#333333"
+     stroke-width="2"
+     id="line8" />
+  <line
+     x1="296.78482"
+     y1="319.80215"
+     x2="296.78482"
+     y2="339.80215"
+     stroke="#333333"
+     stroke-width="2"
+     id="line9" />
+  <line
+     x1="696.78485"
+     y1="319.80215"
+     x2="696.78485"
+     y2="339.80215"
+     stroke="#333333"
+     stroke-width="2"
+     id="line11" />
+  <line
+     x1="896.78485"
+     y1="319.80215"
+     x2="896.78485"
+     y2="339.80215"
+     stroke="#333333"
+     stroke-width="2"
+     id="line12" />
+  <!-- Time labels -->
+  <text
+     x="100"
+     y="180"
+     font-family="Arial"
+     font-size="12"
+     text-anchor="middle"
+     id="text12">t=0</text>
+  <text
+     x="300"
+     y="180"
+     font-family="Arial"
+     font-size="12"
+     text-anchor="middle"
+     id="text13">Request Time</text>
+  <text
+     x="399.96741"
+     y="179.99985"
+     font-family="Arial"
+     font-size="12px"
+     text-anchor="middle"
+     id="text14">Expected Ready</text>
+  <text
+     x="700"
+     y="180"
+     font-family="Arial"
+     font-size="12"
+     text-anchor="middle"
+     id="text15">Deadline</text>
+  <text
+     x="900"
+     y="180"
+     font-family="Arial"
+     font-size="12"
+     text-anchor="middle"
+     id="text16">t=end</text>
+  <!-- Previous state timeline elements -->
+  <text
+     x="50"
+     y="200"
+     font-family="Arial"
+     font-size="14"
+     font-weight="bold"
+     text-anchor="end"
+     id="text17">Before</text>
+  <!-- Order request -->
+  <circle
+     cx="300"
+     cy="200"
+     r="8"
+     fill="#3366cc"
+     id="circle17" />
+  <text
+     x="300"
+     y="230"
+     font-family="Arial"
+     font-size="12"
+     text-anchor="middle"
+     id="text18">Order Requested</text>
+  <text
+     x="300"
+     y="245"
+     font-family="Arial"
+     font-size="12"
+     text-anchor="middle"
+     id="text19">(tD)</text>
+  <!-- Ready time -->
+  <circle
+     cx="392.01028"
+     cy="199.62109"
+     r="8"
+     fill="#66cc66"
+     id="circle19" />
+  <text
+     x="396.55719"
+     y="229.84784"
+     font-family="Arial"
+     font-size="12px"
+     text-anchor="middle"
+     id="text20">Food Ready</text>
+  <text
+     x="392.38919"
+     y="245.00034"
+     font-family="Arial"
+     font-size="12px"
+     text-anchor="middle"
+     id="text21">(tD + prep_time)</text>
+  <!-- Deadline -->
+  <circle
+     cx="700"
+     cy="200"
+     r="8"
+     fill="#cc3333"
+     id="circle21" />
+  <text
+     x="700"
+     y="230"
+     font-family="Arial"
+     font-size="12"
+     text-anchor="middle"
+     id="text22">Delivery Deadline</text>
+  <text
+     x="700"
+     y="245"
+     font-family="Arial"
+     font-size="12"
+     text-anchor="middle"
+     id="text23">(tD + t̄)</text>
+  <!-- Previous estimated arrival -->
+  <circle
+     cx="650"
+     cy="200"
+     r="8"
+     fill="#ff9900"
+     id="circle23" />
+  <text
+     x="609.07758"
+     y="179.99985"
+     font-family="Arial"
+     font-size="12px"
+     text-anchor="middle"
+     id="text24">Prev. Estimated Arrival</text>
+  <text
+     x="648.48438"
+     y="166.74625"
+     font-family="Arial"
+     font-size="12px"
+     text-anchor="middle"
+     id="text25">(aD)</text>
+  <!-- No delay zone -->
+  <rect
+     x="301.13672"
+     y="184.23402"
+     width="400"
+     height="30"
+     fill="#e6ffe6"
+     opacity="0.5"
+     id="rect25" />
+  <!-- Previous estimated delay -->
+  <!-- Timeline separator-->
+  <line
+     x1="100.75782"
+     y1="266.35919"
+     x2="900.75781"
+     y2="266.35919"
+     stroke="#000000"
+     stroke-width="1"
+     stroke-dasharray="5, 5"
+     id="line27" />
+  <!-- Current state timeline elements -->
+  <text
+     x="46.784832"
+     y="329.80215"
+     font-family="Arial"
+     font-size="14px"
+     font-weight="bold"
+     text-anchor="end"
+     id="text28">After</text>
+  <!-- Order request -->
+  <circle
+     cx="296.78482"
+     cy="329.80215"
+     r="8"
+     fill="#3366cc"
+     id="circle28" />
+  <text
+     x="296.78482"
+     y="359.80215"
+     font-family="Arial"
+     font-size="12px"
+     text-anchor="middle"
+     id="text29">Order Requested</text>
+  <text
+     x="296.78482"
+     y="374.80215"
+     font-family="Arial"
+     font-size="12px"
+     text-anchor="middle"
+     id="text30">(tD)</text>
+  <!-- Ready time -->
+  <!-- Deadline -->
+  <circle
+     cx="696.78485"
+     cy="329.80215"
+     r="8"
+     fill="#cc3333"
+     id="circle32" />
+  <text
+     x="696.78485"
+     y="359.80215"
+     font-family="Arial"
+     font-size="12px"
+     text-anchor="middle"
+     id="text33">Delivery Deadline</text>
+  <text
+     x="696.78485"
+     y="374.80215"
+     font-family="Arial"
+     font-size="12px"
+     text-anchor="middle"
+     id="text34">(tD + t̄)</text>
+  <!-- Current estimated arrival -->
+  <circle
+     cx="762.32019"
+     cy="329.80215"
+     r="8"
+     fill="#ff9900"
+     id="circle34" />
+  <text
+     x="778.66864"
+     y="309.44766"
+     font-family="Arial"
+     font-size="12px"
+     text-anchor="middle"
+     id="text35">Current Estimated Arrival</text>
+  <text
+     x="763.1286"
+     y="293.108"
+     font-family="Arial"
+     font-size="12px"
+     text-anchor="middle"
+     id="text36">(aD)</text>
+  <!-- No delay zone -->
+  <rect
+     x="296.87674"
+     y="314.08081"
+     width="400"
+     height="30"
+     fill="#e6ffe6"
+     opacity="0.5"
+     id="rect36" />
+  <!-- Current estimated delay -->
+  <rect
+     x="697.54266"
+     y="314.41507"
+     width="64.382339"
+     height="30"
+     fill="#ffe6e6"
+     opacity="0.5"
+     id="rect37"
+     style="stroke-width:0.802386" />
+  <!-- Delay Calculation -->
+  <rect
+     x="268.68216"
+     y="402.021"
+     width="456.74115"
+     height="119.4782"
+     rx="6.5248733"
+     ry="7.9652138"
+     fill="#f0f0f0"
+     stroke="#666666"
+     stroke-width="1.44183"
+     id="rect38" />
+  <line
+     x1="389.17392"
+     y1="322.06982"
+     x2="389.17392"
+     y2="342.06982"
+     stroke="#333333"
+     stroke-width="2"
+     id="line5-0" />
+  <text
+     x="396.75214"
+     y="312.06967"
+     font-family="Arial"
+     font-size="12px"
+     text-anchor="middle"
+     id="text14-9">Expected Ready</text>
+  <circle
+     cx="388.79501"
+     cy="331.69092"
+     r="8"
+     fill="#66cc66"
+     id="circle19-4" />
+  <text
+     x="393.34192"
+     y="361.91766"
+     font-family="Arial"
+     font-size="12px"
+     text-anchor="middle"
+     id="text20-8">Food Ready</text>
+  <text
+     x="389.17392"
+     y="377.07016"
+     font-family="Arial"
+     font-size="12px"
+     text-anchor="middle"
+     id="text21-8">(tD + prep_time)</text>
+  <text
+     x="501.60757"
+     y="432.30008"
+     font-family="Arial"
+     font-size="18px"
+     font-weight="bold"
+     text-anchor="middle"
+     id="text39">Reward Calculation</text>
+  <text
+     x="279.24249"
+     y="452.95734"
+     font-family="Arial"
+     font-size="14px"
+     text-anchor="start"
+     id="text40"><tspan
+       sodipodi:role="line"
+       id="tspan47"
+       x="279.24249"
+       y="452.95734">Previous Estimated Delay: max(0, prev_arrival - deadline) = 0 minutes</tspan><tspan
+       sodipodi:role="line"
+       id="tspan48"
+       x="279.24249"
+       y="470.45734">Current Estimated Delay: max(0, curr_arrival - deadline) = 5 minutes</tspan><tspan
+       sodipodi:role="line"
+       x="279.24249"
+       y="487.95734"
+       id="tspan50">Delay Change: current_delay - previous_delay = +5 minutes</tspan><tspan
+       sodipodi:role="line"
+       x="279.24249"
+       y="505.45734"
+       id="tspan51">Reward = -1 * delay_change = -5</tspan></text>
+  <text
+     x="200.47086"
+     y="479.03818"
+     font-family="Arial"
+     font-size="14px"
+     text-anchor="start"
+     id="text41" />
+  <text
+     x="200.84976"
+     y="501.08109"
+     font-family="Arial"
+     font-size="14px"
+     text-anchor="start"
+     id="text42" />
+  <text
+     x="201.60759"
+     y="552.30011"
+     font-family="Arial"
+     font-size="14px"
+     font-weight="bold"
+     text-anchor="start"
+     id="text43" />
+  <!-- Arrows connecting states -->
+  <line
+     x1="653.73474"
+     y1="207.84421"
+     x2="759.23248"
+     y2="320.00833"
+     stroke="#ff9900"
+     stroke-width="1.62159"
+     stroke-dasharray="5, 5"
+     id="line43" />
+  <text
+     x="842.53918"
+     y="247.92297"
+     font-family="Arial"
+     font-size="14px"
+     fill="#cc3300"
+     font-weight="bold"
+     text-anchor="middle"
+     id="text44">Arrival Delayed</text>
+  <text
+     x="700"
+     y="320"
+     font-family="Arial"
+     font-size="14px"
+     fill="#cc3300"
+     font-weight="bold"
+     text-anchor="middle"
+     id="text45" />
+  <!-- State features explanation -->
+  <rect
+     x="50"
+     y="90"
+     width="900"
+     height="60"
+     rx="10"
+     ry="10"
+     fill="#e6f0ff"
+     stroke="#3366cc"
+     stroke-width="1"
+     id="rect45" />
+  <text
+     x="500"
+     y="115"
+     font-family="Arial"
+     font-size="14px"
+     font-weight="bold"
+     text-anchor="middle"
+     id="text46">Order Delay Calculation</text>
+  <text
+     x="500"
+     y="140"
+     font-family="Arial"
+     font-size="12"
+     text-anchor="middle"
+     id="text47">estimated_delay = max(0, planned_arrival - (request_time + delivery_window))</text>
+</svg>

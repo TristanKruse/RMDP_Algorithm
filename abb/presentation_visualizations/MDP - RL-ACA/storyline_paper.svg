@@ -1,0 +1,100 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 780" width="1000" height="780">
+  <!-- Add explicit white background -->
+  <rect width="1000" height="780" fill="white"/>
+  <!-- Styles -->
+  <defs>
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#555"/>
+    </marker>
+    <filter id="shadow" x="-5%" y="-5%" width="110%" height="110%">
+      <feDropShadow dx="2" dy="2" stdDeviation="2" flood-opacity="0.3"/>
+    </filter>
+  </defs>
+
+  <!-- Box 1: Problem Context -->
+  <rect x="335" y="20" width="330" height="120" rx="10" ry="10" fill="#e6eeff" stroke="#6080c0" stroke-width="2" filter="url(#shadow)"/>
+  <text x="500" y="50" text-anchor="middle" font-family="Arial, sans-serif" font-weight="bold" font-size="18">Problem Context</text>
+  <text x="500" y="80" text-anchor="middle" font-family="Arial, sans-serif" font-size="14">Restaurant Meal Delivery Problem (RMDP)</text>
+  <text x="500" y="105" text-anchor="middle" font-family="Arial, sans-serif" font-size="14">Dynamic, stochastic, and multi-stakeholder</text>
+  <text x="500" y="125" text-anchor="middle" font-family="Arial, sans-serif" font-size="14">optimization challenge</text>
+
+  <!-- Arrow 1 -->
+  <line x1="500" y1="140" x2="500" y2="170" stroke="#555" stroke-width="2" marker-end="url(#arrowhead)"/>
+
+  <!-- Box 2: Prior Work -->
+  <rect x="335" y="180" width="330" height="120" rx="10" ry="10" fill="#e6ffe6" stroke="#60c080" stroke-width="2" filter="url(#shadow)"/>
+  <text x="500" y="210" text-anchor="middle" font-family="Arial, sans-serif" font-weight="bold" font-size="18">Prior Work (Ulmer et al., 2021)</text>
+  <text x="500" y="240" text-anchor="middle" font-family="Arial, sans-serif" font-size="14">Anticipatory Customer Assignment (ACA)</text>
+  <text x="500" y="265" text-anchor="middle" font-family="Arial, sans-serif" font-size="14">Time buffer and postponement strategies</text>
+  <text x="500" y="285" text-anchor="middle" font-family="Arial, sans-serif" font-size="14">to manage uncertainty</text>
+
+  <!-- Arrow 2 -->
+  <line x1="500" y1="300" x2="500" y2="330" stroke="#555" stroke-width="2" marker-end="url(#arrowhead)"/>
+
+  <!-- Box 3: Limitation -->
+  <rect x="335" y="340" width="330" height="120" rx="10" ry="10" fill="#ffe6e6" stroke="#c06060" stroke-width="2" filter="url(#shadow)"/>
+  <text x="500" y="370" text-anchor="middle" font-family="Arial, sans-serif" font-weight="bold" font-size="18">Limitation</text>
+  <text x="500" y="400" text-anchor="middle" font-family="Arial, sans-serif" font-size="14">ACA's heuristic-based postponement logic</text>
+  <text x="500" y="425" text-anchor="middle" font-family="Arial, sans-serif" font-size="14">leads to suboptimal bundling opportunities</text>
+  <text x="500" y="445" text-anchor="middle" font-family="Arial, sans-serif" font-size="14">and higher delays</text>
+
+  <!-- Arrow 3 -->
+  <line x1="500" y1="460" x2="500" y2="490" stroke="#555" stroke-width="2" marker-end="url(#arrowhead)"/>
+
+  <!-- Box 4: Our Approach -->
+  <rect x="335" y="500" width="330" height="120" rx="10" ry="10" fill="#f0e6ff" stroke="#8060c0" stroke-width="2" filter="url(#shadow)"/>
+  <text x="500" y="530" text-anchor="middle" font-family="Arial, sans-serif" font-weight="bold" font-size="18">Our Approach</text>
+  <text x="500" y="560" text-anchor="middle" font-family="Arial, sans-serif" font-size="14">RL-enhanced postponement decisions</text>
+  <text x="500" y="585" text-anchor="middle" font-family="Arial, sans-serif" font-size="14">Learns state-aware policies to optimize</text>
+  <text x="500" y="605" text-anchor="middle" font-family="Arial, sans-serif" font-size="14">bundling within ACA framework</text>
+
+  <!-- Arrow 4 -->
+  <line x1="500" y1="620" x2="500" y2="650" stroke="#555" stroke-width="2" marker-end="url(#arrowhead)"/>
+
+  <!-- Box 5: Benefits -->
+  <rect x="335" y="660" width="330" height="100" rx="10" ry="10" fill="#fff2e6" stroke="#c08060" stroke-width="2" filter="url(#shadow)"/>
+  <text x="500" y="690" text-anchor="middle" font-family="Arial, sans-serif" font-weight="bold" font-size="18">Benefits</text>
+  <text x="500" y="720" text-anchor="middle" font-family="Arial, sans-serif" font-size="14">Improved bundling opportunities and</text>
+  <text x="500" y="740" text-anchor="middle" font-family="Arial, sans-serif" font-size="14">reduced delivery delays</text>
+
+  <!-- Detail Callouts -->
+  <!-- Problem Details -->
+  <rect x="50" y="30" width="240" height="100" rx="8" ry="8" fill="#f8f8f8" stroke="#aaa" stroke-width="1" filter="url(#shadow)"/>
+  <text x="170" y="55" text-anchor="middle" font-family="Arial, sans-serif" font-weight="bold" font-size="14">Problem Challenges</text>
+  <text x="60" y="80" font-family="Arial, sans-serif" font-size="12">• Dynamic order arrivals</text>
+  <text x="60" y="100" font-family="Arial, sans-serif" font-size="12">• Stochastic food preparation times</text>
+  <text x="60" y="120" font-family="Arial, sans-serif" font-size="12">• Multiple competing objectives</text>
+  <line x1="290" y1="80" x2="335" y2="80" stroke="#aaa" stroke-width="1" stroke-dasharray="5,3"/>
+
+  <!-- ACA Details -->
+  <rect x="50" y="190" width="240" height="100" rx="8" ry="8" fill="#f8f8f8" stroke="#aaa" stroke-width="1" filter="url(#shadow)"/>
+  <text x="170" y="215" text-anchor="middle" font-family="Arial, sans-serif" font-weight="bold" font-size="14">ACA Features</text>
+  <text x="60" y="240" font-family="Arial, sans-serif" font-size="12">• Time buffer to hedge against delay</text>
+  <text x="60" y="260" font-family="Arial, sans-serif" font-size="12">• Simple heuristic for postponement</text>
+  <text x="60" y="280" font-family="Arial, sans-serif" font-size="12">• Order bundling opportunities</text>
+  <line x1="290" y1="240" x2="335" y2="240" stroke="#aaa" stroke-width="1" stroke-dasharray="5,3"/>
+
+  <!-- Limitations Details -->
+  <rect x="710" y="350" width="240" height="100" rx="8" ry="8" fill="#f8f8f8" stroke="#aaa" stroke-width="1" filter="url(#shadow)"/>
+  <text x="830" y="375" text-anchor="middle" font-family="Arial, sans-serif" font-weight="bold" font-size="14">Limitations Details</text>
+  <text x="720" y="400" font-family="Arial, sans-serif" font-size="12">• Myopic postponement decisions</text>
+  <text x="720" y="420" font-family="Arial, sans-serif" font-size="12">• Missed bundling opportunities</text>
+  <text x="720" y="440" font-family="Arial, sans-serif" font-size="12">• No adaptation to system state</text>
+  <line x1="710" y1="400" x2="665" y2="400" stroke="#aaa" stroke-width="1" stroke-dasharray="5,3"/>
+
+  <!-- RL Approach Details -->
+  <rect x="710" y="510" width="240" height="100" rx="8" ry="8" fill="#f8f8f8" stroke="#aaa" stroke-width="1" filter="url(#shadow)"/>
+  <text x="830" y="535" text-anchor="middle" font-family="Arial, sans-serif" font-weight="bold" font-size="14">RL Approach Details</text>
+  <text x="720" y="560" font-family="Arial, sans-serif" font-size="12">• State space: 6 normalized features</text>
+  <text x="720" y="580" font-family="Arial, sans-serif" font-size="12">• Reward: based on delay reduction</text>
+  <text x="720" y="600" font-family="Arial, sans-serif" font-size="12">• Neural network value function</text>
+  <line x1="710" y1="560" x2="665" y2="560" stroke="#aaa" stroke-width="1" stroke-dasharray="5,3"/>
+
+  <!-- Benefits Details -->
+  <rect x="710" y="660" width="240" height="100" rx="8" ry="8" fill="#f8f8f8" stroke="#aaa" stroke-width="1" filter="url(#shadow)"/>
+  <text x="830" y="685" text-anchor="middle" font-family="Arial, sans-serif" font-weight="bold" font-size="14">Results</text>
+  <text x="720" y="710" font-family="Arial, sans-serif" font-size="12">• Higher on-time delivery rates</text>
+  <text x="720" y="730" font-family="Arial, sans-serif" font-size="12">• Increased bundling efficiency</text>
+  <text x="720" y="750" font-family="Arial, sans-serif" font-size="12">• Scalable to real-world instances</text>
+  <line x1="710" y1="710" x2="665" y2="710" stroke="#aaa" stroke-width="1" stroke-dasharray="5,3"/>
+</svg>
