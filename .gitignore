@@ -8,5 +8,5 @@ data/models/*
 .webui_secret_key
 speed_analysis_results/*
 presentation_visualizations/*
-TO_do.md
+*.md
 
