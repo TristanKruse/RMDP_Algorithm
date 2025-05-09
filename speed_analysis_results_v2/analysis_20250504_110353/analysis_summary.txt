@@ -1,0 +1,20 @@
+Meituan Vehicle Speed Analysis Summary (Version 2.0)
+=====================================
+
+Analysis Date: 20250504_110353
+Total waybill records analyzed: 654343
+Total rider records analyzed: 62044
+Total speed records calculated: 193911
+Realistic speed records used: 182529
+
+Service Time Estimates (minutes):
+Pickup service time: 3.92 (std: 2.62)
+Drop-off service time: 3.69 (std: 2.07)
+
+Speed Statistics (km/h):
+Mean speed: 15.80
+Median speed: 12.49
+Standard deviation: 14.11
+25th percentile: 6.99
+75th percentile: 19.39
+Distance-weighted average speed: 11.33

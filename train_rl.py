@@ -40,7 +40,7 @@ def train_rl_aca(
     rl_learning_rate: float = 0.0005,
     rl_discount_factor: float = 0.95,
     rl_exploration_rate: float = 0.9,
-    rl_exploration_decay: float = 0.99999,
+    rl_exploration_decay: float = 0.99,
     rl_min_exploration_rate: float = 0.2,
     rl_batch_size: int = 64,
     rl_target_update_frequency: int = 50,
@@ -972,50 +972,50 @@ def define_training_phases():
         {
             "name": "Simple Environment",
             "env_config": {
-                "num_vehicles": 5,  # Start with just 2 vehicles
-                "num_restaurants": 5,  # Limited restaurants
+                "num_vehicles": 10,  # Start with just 2 vehicles
+                "num_restaurants": 20,  # Limited restaurants
                 "service_area_dimensions": (6.0, 6.0),  # Small area
-                "mean_interarrival_time": 20,  # Low order density
+                "mean_interarrival_time": 8,  # Low order density
             },
             "performance_criteria": {
                 # No performance criteria - phase will run until max_episodes
             },
             "min_episodes": 20, 
-            "max_episodes": 1000    # More episodes for initial learning
+            "max_episodes": 500    # More episodes for initial learning
         }
-        ,
+        # ,
         
-        # Phase 2: Intermediate Environment
-        {
-            "name": "Intermediate Environment",
-            "env_config": {
-                "num_vehicles": 15,  # Increase to 5 vehicles
-                "num_restaurants": 15,  # More restaurants
-                "service_area_dimensions": (6.0, 6.0),  # Larger area
-                "mean_interarrival_time": 1.5,  # Medium order density
-            },
-            "performance_criteria": {
-                # No performance criteria - phase will run until max_episodes
-            },
-            "min_episodes": 20,  # 30, 100
-            "max_episodes": 200   # Substantial training in intermediate complexity
-        },
+        # # Phase 2: Intermediate Environment
+        # {
+        #     "name": "Intermediate Environment",
+        #     "env_config": {
+        #         "num_vehicles": 15,  # Increase to 5 vehicles
+        #         "num_restaurants": 15,  # More restaurants
+        #         "service_area_dimensions": (6.0, 6.0),  # Larger area
+        #         "mean_interarrival_time": 1.5,  # Medium order density
+        #     },
+        #     "performance_criteria": {
+        #         # No performance criteria - phase will run until max_episodes
+        #     },
+        #     "min_episodes": 20,  # 30, 100
+        #     "max_episodes": 200   # Substantial training in intermediate complexity
+        # },
         
-        # Phase 3: Full Environment
-        {
-            "name": "Full Environment",
-            "env_config": {
-                "num_vehicles": 30,  # Full fleet
-                "num_restaurants": 30,  # All restaurants
-                "service_area_dimensions": (6.0, 6.0),  # Complete service area
-                "mean_interarrival_time": 0.65,  # High order density
-            },
-            "performance_criteria": {
-                # No performance criteria - phase will run until max_episodes
-            },
-            "min_episodes": 20,  # 50, 300
-            "max_episodes": 200   # Extensive training in full complexity
-        }
+        # # Phase 3: Full Environment
+        # {
+        #     "name": "Full Environment",
+        #     "env_config": {
+        #         "num_vehicles": 30,  # Full fleet
+        #         "num_restaurants": 30,  # All restaurants
+        #         "service_area_dimensions": (6.0, 6.0),  # Complete service area
+        #         "mean_interarrival_time": 0.65,  # High order density
+        #     },
+        #     "performance_criteria": {
+        #         # No performance criteria - phase will run until max_episodes
+        #     },
+        #     "min_episodes": 20,  # 50, 300
+        #     "max_episodes": 200   # Extensive training in full complexity
+        # }
     ]
     
     return phases
@@ -1113,15 +1113,15 @@ if __name__ == "__main__":
             decay_method=args.decay_method,
             # Tuned RL hyperparameters
             decay_rate=0.99,
-            rl_learning_rate=0.0003,
-            rl_batch_size=96,
+            rl_learning_rate=0.0004,
+            rl_batch_size=32,
             rl_target_update_frequency=75,
-            rl_discount_factor=0.95,
-            rl_exploration_decay=0.9999,
+            rl_discount_factor=0.9,
+            rl_exploration_decay=0.99,
             exploration_end=0.05,
-            rl_bundling_reward=0.05,
-            rl_postponement_penalty=0,
-            rl_on_time_reward=0.2
+            rl_bundling_reward=0.0,
+            rl_postponement_penalty=-0.0,
+            rl_on_time_reward=0.0
         )
 
         # Always compare after training, unless explicitly turned off

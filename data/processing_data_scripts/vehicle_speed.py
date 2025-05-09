@@ -247,47 +247,6 @@ def analyze_speeds(speeds_df):
     return stats, weighted_avg_speed
 
 
-# def plot_visualizations(speeds_df, pickup_service_times, dropoff_service_times, output_dir):
-#     """Create visualizations for speed and service time analysis"""
-#     print("\nCreating visualizations...")
-    
-#     if len(speeds_df) == 0:
-#         print("No speed data to visualize!")
-#         return
-    
-#     try:
-#         # 1. Speed Distribution by Segment Type (Figure~\ref{fig:courier_speeds})
-#         plt.figure(figsize=(8, 6))
-#         sns.boxplot(x='segment', y='speed_kmh', data=speeds_df)
-#         plt.title('Speed Distribution by Trip Segment')
-#         plt.xlabel('Segment Type')
-#         plt.ylabel('Speed (km/h)')
-#         plt.xticks(rotation=45)
-#         plt.tight_layout()
-#         plt.savefig(f"{output_dir}/courier_speeds.png", dpi=300)
-#         plt.close()
-        
-#         # 2. Service Time Distribution (Figure~\ref{fig:service_times})
-#         plt.figure(figsize=(8, 6))
-#         if pickup_service_times and dropoff_service_times:
-#             # Combine pickup and drop-off service times into one plot with different colors
-#             sns.histplot(pickup_service_times, bins=30, kde=True, color='blue', label='Pickup', alpha=0.5)
-#             sns.histplot(dropoff_service_times, bins=30, kde=True, color='orange', label='Drop-Off', alpha=0.5)
-#             plt.title('Service Time Distribution')
-#             plt.xlabel('Service Time (minutes)')
-#             plt.ylabel('Frequency')
-#             plt.legend()
-#         else:
-#             plt.text(0.5, 0.5, "No service time data available", ha='center', va='center')
-#             plt.title('Service Time Distribution')
-#         plt.tight_layout()
-#         plt.savefig(f"{output_dir}/service_times.png", dpi=300)
-#         plt.close()
-        
-#         print(f"Visualizations saved to {output_dir}")
-#     except Exception as e:
-#         print(f"Error creating visualizations: {e}")
-
 def plot_visualizations(speeds_df, pickup_service_times, dropoff_service_times, output_dir):
     """Create visualizations for speed and service time analysis"""
     print("\nCreating visualizations...")

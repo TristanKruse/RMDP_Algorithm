@@ -8,11 +8,12 @@ def run_hyperparameter_tuning(num_experiments=20, episodes_per_experiment=500):
         "batch_size": [32, 64, 96],
         "target_update_frequency": [25, 50, 75],
         "discount_factor": [0.9, 0.95, 0.99],
-        "exploration_decay": [0.99],  # adjusted for faster decay
-        "min_exploration_rate": [0.05, 0.01],
-        "bundling_reward": [0.05, 0],
-        "postponement_penalty": [-0.005, 0],
-        "on_time_reward": [0.2, 0]
+        "exploration_decay": [0.99],
+        "min_exploration_rate": [0.01, 0.05],
+        "postponement_penalty": [0.00, -0.005],
+        # Note: The following parameters are fixed for now
+        "bundling_reward": [0.00],
+        "on_time_reward": [0.0]
     }
 
     results = []
@@ -26,10 +27,10 @@ def run_hyperparameter_tuning(num_experiments=20, episodes_per_experiment=500):
             {
                 "name": "Simple Environment",
                 "env_config": {
-                    "num_vehicles": 5,
-                    "num_restaurants": 5,
-                    "service_area_dimensions": (4.0, 4.0),
-                    "mean_interarrival_time": 20,
+                    "num_vehicles": 10,
+                    "num_restaurants": 20,
+                    "service_area_dimensions": (6.0, 6.0),
+                    "mean_interarrival_time": 8,
                 },
                 "performance_criteria": {},
                 "min_episodes": 20,

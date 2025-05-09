@@ -27,17 +27,6 @@ hourly_pattern = {
     ]
 }
 
-# Lunch dinner pattern for 24 hours
-# lunch_dinner_pattern = {
-#     'type': 'hourly',
-#     'hourly_rates': {
-#         0: 0.21, 1: 0.13, 2: 0.08, 3: 0.05, 4: 0.04, 5: 0.04, 6: 0.12, 7: 0.24,
-#         8: 0.41, 9: 0.53, 10: 1.59, 11: 4.38, 12: 2.38, 13: 1.15, 14: 0.84,
-#         15: 0.76, 16: 1.00, 17: 2.25, 18: 2.86, 19: 1.94, 20: 1.23, 21: 0.85,
-#         22: 0.55, 23: 0.37
-#     }
-# }
-
 # Lunch dinner pattern for 12 hours, starting at 10 a.m
 lunch_dinner_pattern = {
     'type': 'hourly',
@@ -68,18 +57,6 @@ lunch_dinner_pattern = {
         23: 0.53  # Maps to 09:00
     }
 }
-
-
-# Number of active couriers per hour
-# courier_schedule_pattern = {
-#     'type': 'hourly',
-#     'hourly_rates': {
-#         0: 0.37, 1: 0.24, 2: 0.15, 3: 0.10, 4: 0.07, 5: 0.05,
-#         6: 0.07, 7: 0.20, 8: 0.36, 9: 0.53, 10: 0.81, 11: 2.04,
-#         12: 2.72, 13: 2.40, 14: 1.53, 15: 1.07, 16: 1.00, 17: 1.25,
-#         18: 1.93, 19: 2.19, 20: 1.98, 21: 1.40, 22: 0.93, 23: 0.62
-#     }
-# }
 
 
 def bimodal_demand(time_percent):
@@ -259,7 +236,7 @@ def run_test_episode(
 ):
     # is_paused = False
     simulation_duration = simulation_duration = get_env_config(None)["simulation_duration"]  # 420
-    speed = 11.5   # 40.0 km/h in paper, 10kmh Durchschnitt in Meituan Daten, if also considering service time maybe about 15kmh
+    speed = 16  # 40.0 km/h in paper, 16 km/h in Meituan data
     street_network_factor = 1.0  # 1.4 in paper, we calculated the average speed over the euclidic distance, so no adjustment necessary
     movement_per_step = (speed / 60) / street_network_factor  # km per minute adjusted for street network
 
@@ -286,30 +263,6 @@ def run_test_episode(
     # if meituan_config is not None:
     #     env_params = meituan_config.apply_to_env_params(env_params)
     
-    # if meituan_config is None or not hasattr(meituan_config, 'order_generation_mode') or meituan_config.order_generation_mode != 'pattern':
-    #     # Use default mode with parameters from env_params
-    #     order_generator = OrderGenerator(
-    #         mean_interarrival_time=env_params["mean_interarrival_time"],
-    #         service_area_dimensions=env_params["service_area_dimensions"],
-    #         delivery_window=env_params["delivery_window"],
-    #         service_time=env_params["service_time"],
-    #         mean_prep_time=env_params["mean_prep_time"],
-    #         prep_time_var=env_params["prep_time_var"],
-    #         mode="default",  # Default mode for constant arrival rate
-    #         temporal_pattern=env_params.get("demand_pattern", None)
-    #     )
-    # else:
-    #     # Use pattern-based generator if specified by meituan_config
-    #     order_generator = OrderGenerator(
-    #         mean_interarrival_time=env_params["mean_interarrival_time"],
-    #         service_area_dimensions=env_params["service_area_dimensions"],
-    #         delivery_window=env_params["delivery_window"],
-    #         service_time=env_params["service_time"],
-    #         mean_prep_time=env_params["mean_prep_time"],
-    #         prep_time_var=env_params["prep_time_var"],
-    #         mode="pattern",
-    #         temporal_pattern=meituan_config.temporal_pattern.get('hourly_rates', {})
-    #     )
 
     # # Add the order_generator to env_params
     # env_params["order_generator"] = order_generator
@@ -365,18 +318,34 @@ def run_test_episode(
         meituan_config.apply_to_environment(env)
 
     # Create and set the order generator
-    if meituan_config is None or not hasattr(meituan_config, 'order_generation_mode') or meituan_config.order_generation_mode != 'pattern':
-        # Use default mode with parameters from env_params
-        order_generator = OrderGenerator(
-            mean_interarrival_time=env_params["mean_interarrival_time"],
-            service_area_dimensions=env_params["service_area_dimensions"],
-            delivery_window=env_params["delivery_window"],
-            service_time=env_params["service_time"],
-            mean_prep_time=env_params["mean_prep_time"],
-            prep_time_var=env_params["prep_time_var"],
-            mode="default",  # Default mode for constant arrival rate
-            temporal_pattern=env_params.get("demand_pattern", None)
-        )
+    if (meituan_config is None or not hasattr(meituan_config, 'order_generation_mode') or meituan_config.order_generation_mode != 'pattern'):
+        # Check if a demand pattern is provided in env_params
+        if env_params.get("demand_pattern"):
+            # Use pattern mode if a demand pattern is specified
+            demand_pattern = env_params.get("demand_pattern")
+            temporal_pattern = demand_pattern.get('hourly_rates', {}) if isinstance(demand_pattern, dict) else demand_pattern
+            order_generator = OrderGenerator(
+                mean_interarrival_time=env_params["mean_interarrival_time"],
+                service_area_dimensions=env_params["service_area_dimensions"],
+                delivery_window=env_params["delivery_window"],
+                service_time=env_params["service_time"],
+                mean_prep_time=env_params["mean_prep_time"],
+                prep_time_var=env_params["prep_time_var"],
+                mode="pattern",
+                temporal_pattern=temporal_pattern
+            )
+        else:
+            # Use default mode with parameters from env_params
+            order_generator = OrderGenerator(
+                mean_interarrival_time=env_params["mean_interarrival_time"],
+                service_area_dimensions=env_params["service_area_dimensions"],
+                delivery_window=env_params["delivery_window"],
+                service_time=env_params["service_time"],
+                mean_prep_time=env_params["mean_prep_time"],
+                prep_time_var=env_params["prep_time_var"],
+                mode="default",
+                temporal_pattern=None
+            )
     else:
         # Use pattern-based generator if specified by meituan_config
         order_generator = OrderGenerator(
@@ -392,7 +361,6 @@ def run_test_episode(
 
     # Set the order generator on the order manager
     env.order_manager.set_order_generator(order_generator)
-
 
     # Reset the environment to properly initialize
     state = env.reset()
@@ -410,7 +378,7 @@ def run_test_episode(
             vehicle_capacity=5,
             service_time=4.0,
             mean_prep_time=13,
-            delivery_window=40.0,
+            delivery_window=35.0,
             postponement_method="heuristic",
         ),
         "rl_aca": lambda movement_per_step, location_manager: ACA(
@@ -778,6 +746,36 @@ def run_test_episode(
         
         # ----- KPI Tracking -----
         episode_stats = calculate_capacity_metrics(episode_stats, simulation_duration, cooldown_duration, warmup_duration)
+
+        # Add required metrics for tune_buffer.py
+        # Filter late orders to only include delivered orders
+        # Calculate delivery metrics
+        # Add required metrics for tune_buffer.py
+        # delivered_orders_set = episode_stats.get("delivered_orders_set", set())
+        # late_orders_filtered = len(set(episode_stats["late_orders"]).intersection(delivered_orders_set))
+        # on_time_rate = ((delivered_orders - late_orders_filtered) / delivered_orders * 100) if delivered_orders else 0
+        # late_rate = (late_orders_filtered / delivered_orders * 100) if delivered_orders else 0
+        # avg_delay = sum(episode_stats["delay_values"]) / len(episode_stats["delay_values"]) if episode_stats["delay_values"] else 0
+        # avg_distance = (episode_stats["total_distance"] / delivered_orders) if delivered_orders else 0
+        # total_delay = sum(episode_stats["delay_values"]) if episode_stats["delay_values"] else 0
+
+
+        # Add required metrics for tune_buffer.py
+        late_orders = len(episode_stats["late_orders"])  # Use the same unfiltered count as in logging
+        on_time_rate = ((delivered_orders - late_orders) / delivered_orders * 100) if delivered_orders else 0
+        late_rate = (late_orders / delivered_orders * 100) if delivered_orders else 0
+        avg_delay = sum(episode_stats["delay_values"]) / len(episode_stats["delay_values"]) if episode_stats["delay_values"] else 0
+        avg_distance = (episode_stats["total_distance"] / delivered_orders) if delivered_orders else 0
+        total_delay = sum(episode_stats["delay_values"]) if episode_stats["delay_values"] else 0
+
+        # Update episode_stats with the computed metrics
+        episode_stats["on_time_delivery_rate"] = on_time_rate
+        episode_stats["total_delay"] = total_delay
+        episode_stats["late_orders_count"] = late_orders  # Store the unfiltered count
+        episode_stats["percentage_late_orders"] = late_rate
+        episode_stats["avg_delay_late_orders"] = avg_delay
+        episode_stats["avg_distance_per_order"] = avg_distance
+
         logger.info("\nFinal Performance Metrics:")
         logger.info(f"Total simulation steps: {step}")
         logger.info(f"Total Orders: {total_orders}")
@@ -1380,12 +1378,12 @@ def get_env_config(movement_per_step):
     """Environment configuration with explanatory documentation"""
     return {
         # System size parameters
-        "num_restaurants": 5,  # Production: 110 restaurants in system
-        "num_vehicles": 5,  # Production: 15 delivery vehicles
+        "num_restaurants": 20,  # Production: 110 restaurants in system
+        "num_vehicles": 10,  # Production: 15 delivery vehicles
         # Time parameters
-        "mean_prep_time": 13.4,  # Gamma distributed preparation time (minutes)
-        "prep_time_var": 2.0,  # Preparation time variance (COV: 0.0-0.6)
-        "delivery_window": 35,  # Delivery time window (minutes)
+        "mean_prep_time": 13.4,  # 13.4 # Gamma distributed preparation time (minutes)
+        "prep_time_var": 20.9,  # 2.0 # Preparation time variance
+        "delivery_window": 39,  # Delivery time window (minutes)
         "simulation_duration": 600,  # 420 # Total simulation time (minutes)
         "cooldown_duration": 0,  # No new orders in final period (minutes)
         # Workload parameters
@@ -1399,13 +1397,13 @@ def get_env_config(movement_per_step):
         "service_area_dimensions": (6.0, 6.0),  # 10km x 10km area
         "downtown_concentration": 0.71,  # Restaurant concentration downtown
         # Service parameters
-        "service_time": 4.0,  # Time at pickup/delivery locations
+        "service_time": 3.0,  # 4.0 # Time at pickup/delivery locations
         "movement_per_step": movement_per_step,
         # Visualization
         "visualize": True,
         "update_interval": 0.01,  # Update frequency (0.01 or 1)
         # Optional behavior flags (set by run_test_episode)
-        "reposition_idle_vehicles": True,  # Whether vehicles reposition when idle
+        "reposition_idle_vehicles": False,  # Whether vehicles reposition when idle
         "seed": None,  # Random seed for reproducibility
         "demand_pattern": lunch_dinner_pattern,  # e.g., lunch_dinner_pattern,  # Pass your demand pattern here
     }
@@ -1688,14 +1686,14 @@ SOLVERS = {
     "aca": lambda movement_per_step, location_manager: ACA(
         location_manager=location_manager,  # Add this parameter
         # Core algorithm parameters
-        buffer=15,
+        buffer=17,
         max_postponements=0,
         max_postpone_time=0,
         # Time & Vehicle parameters
         vehicle_capacity=5,     # test 5 
-        service_time=4.0,
-        mean_prep_time=13,
-        delivery_window=40.0,   # assumed to be the same for all orders, would potentially have to be adjusted.
+        service_time=3.0,
+        mean_prep_time=13.4,
+        delivery_window=39.0,   # assumed to be the same for all orders, would potentially have to be adjusted.
         # Default to heuristic postponement
         postponement_method="heuristic",
     ),
@@ -1703,15 +1701,15 @@ SOLVERS = {
     "rl_aca": lambda movement_per_step, location_manager: ACA(
         location_manager=location_manager,
         # Core algorithm parameters
-        buffer=15,
-        max_postponements=3,
-        max_postpone_time=10,
+        buffer=17,
+        max_postponements=0,
+        max_postpone_time=0,
         # Vehicle parameters
-        vehicle_capacity=3,
+        vehicle_capacity=5,
         # Time parameters
-        service_time=2.0,
-        mean_prep_time=13,
-        delivery_window=40.0,
+        service_time=3.0,
+        mean_prep_time=13.4,
+        delivery_window=39.0,
         # Use RL-based postponement
         postponement_method="rl-aca",  # rl
         rl_training_mode=True,  # Change this to False for evaluation
@@ -1760,7 +1758,7 @@ if __name__ == "__main__":
         meituan_config=custom_config,
         seed=42,
         reposition_idle_vehicles=False,
-        visualize=True,
+        visualize=False,
         warmup_duration=0,
     )
     logger.info("\nTest completed!")
