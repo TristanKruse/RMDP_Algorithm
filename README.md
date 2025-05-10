@@ -81,7 +81,7 @@ restaurant-delivery/
 2. **Run the simulation**:
 
    ```bash
-   python main.py
+   python train.py
    ```
 
 3. **Interact with the visualization**:
