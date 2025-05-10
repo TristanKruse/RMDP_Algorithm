@@ -94,17 +94,6 @@ restaurant-delivery/
    - The simulation logs performance metrics (e.g., average delivery time, vehicle utilization).
    - Visualizations show real-time vehicle routes and order statuses.
 
-## Contributing
-
-Contributions are welcome! To contribute:
-
-1. Fork the repository.
-2. Create a new branch (`git checkout -b feature/your-feature`).
-3. Make your changes and commit (`git commit -m "Add your feature"`).
-4. Push to your branch (`git push origin feature/your-feature`).
-5. Open a Pull Request.
-
-Please ensure your code follows the project's coding style and includes appropriate tests.
 
 ## License
 
@@ -116,4 +105,4 @@ Ulmer, M. W., Thomas, B. W., Campbell, A. M., & Woyak, N. (2021). The restaurant
 
 ## Contact
 
-For questions or suggestions, please open an issue on the GitHub repository or contact the maintainer at your-email@example.com.
+For questions or suggestions, please open an issue on the GitHub repository or contact the maintainer at krusetristan1@gmail.com
