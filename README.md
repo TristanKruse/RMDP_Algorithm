@@ -64,11 +64,6 @@ restaurant-delivery/
    pip install -r requirements.txt
    ```
 
-   *Note*: If `requirements.txt` is not provided, install required packages manually:
-
-   ```bash
-   pip install numpy pyyaml matplotlib
-   ```
 
 ## Usage
 
