@@ -4,12 +4,13 @@ A Python implementation of a dynamic vehicle routing system for restaurant meal 
 
 ## Overview
 
-The Restaurant Meal Delivery Problem (RMDP) addresses the challenge of efficiently assigning and delivering meal orders to customers using a fleet of vehicles. This implementation:
+The Restaurant Meal Delivery Problem (RMDP) tackles the complex task of managing food delivery operations for online platforms like Meituan, focusing on dynamic order assignment and routing. This implementation:
 
-- Dynamically assigns incoming orders to delivery vehicles.
-- Updates routes in real-time based on food preparation times and traffic conditions.
-- Optimizes delivery operations to balance customer satisfaction, restaurant efficiency, and vehicle utilization.
-- Visualizes vehicle movements and delivery statuses in real-time.
+- Dynamically assigns incoming orders to couriers in real-time, adapting to continuous order arrivals and unpredictable timing.
+- Optimizes routes under uncertain food preparation times and deterministic travel times, ensuring timely deliveries.
+- Balances multiple stakeholder objectives, including customer satisfaction (timely deliveries and food quality), courier efficiency (fair workload and minimal idle time), restaurant reputation (prompt pickups), and platform efficiency.
+- Incorporates real-time decision-making to handle the dynamic and stochastic nature of the RMDP, inspired by the Meituan Challenge dataset.
+
 
 ## Features
 
@@ -38,13 +39,8 @@ restaurant-delivery/
 │   └── fastest_vehicle/       # Nearest vehicle assignment strategy
 ├── config.yaml                # Configuration settings (e.g., simulation parameters)
 ├── datatypes.py               # Core data structures for orders, vehicles, etc.
-└── main.py                    # Entry point for running the simulation
+└── train.py                    # Entry point for running the simulation
 ```
-
-## State vs. Decision State
-
-- **State**: Represents the full system state, including all information about orders, vehicles, and locations, used by the environment for simulation.
-- **Decision State**: A subset of the state containing only the information necessary for making routing decisions, used by the routing algorithms.
 
 ## Installation
 
@@ -68,11 +64,6 @@ restaurant-delivery/
    pip install -r requirements.txt
    ```
 
-   *Note*: If `requirements.txt` is not provided, install required packages manually:
-
-   ```bash
-   pip install numpy pyyaml matplotlib
-   ```
 
 ## Usage
 
@@ -81,7 +72,7 @@ restaurant-delivery/
 2. **Run the simulation**:
 
    ```bash
-   python main.py
+   python train.py
    ```
 
 3. **Interact with the visualization**:
@@ -94,17 +85,6 @@ restaurant-delivery/
    - The simulation logs performance metrics (e.g., average delivery time, vehicle utilization).
    - Visualizations show real-time vehicle routes and order statuses.
 
-## Contributing
-
-Contributions are welcome! To contribute:
-
-1. Fork the repository.
-2. Create a new branch (`git checkout -b feature/your-feature`).
-3. Make your changes and commit (`git commit -m "Add your feature"`).
-4. Push to your branch (`git push origin feature/your-feature`).
-5. Open a Pull Request.
-
-Please ensure your code follows the project's coding style and includes appropriate tests.
 
 ## License
 
@@ -116,4 +96,4 @@ Ulmer, M. W., Thomas, B. W., Campbell, A. M., & Woyak, N. (2021). The restaurant
 
 ## Contact
 
-For questions or suggestions, please open an issue on the GitHub repository or contact the maintainer at your-email@example.com.
+For questions or suggestions, please open an issue on the GitHub repository or contact the maintainer at krusetristan1@gmail.com
