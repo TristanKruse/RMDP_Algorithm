@@ -38,7 +38,7 @@ restaurant-delivery/
 │   └── fastest_vehicle/       # Nearest vehicle assignment strategy
 ├── config.yaml                # Configuration settings (e.g., simulation parameters)
 ├── datatypes.py               # Core data structures for orders, vehicles, etc.
-└── main.py                    # Entry point for running the simulation
+└── train.py                    # Entry point for running the simulation
 ```
 
 ## State vs. Decision State
