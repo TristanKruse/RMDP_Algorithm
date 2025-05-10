@@ -41,11 +41,6 @@ restaurant-delivery/
 └── train.py                    # Entry point for running the simulation
 ```
 
-## State vs. Decision State
-
-- **State**: Represents the full system state, including all information about orders, vehicles, and locations, used by the environment for simulation.
-- **Decision State**: A subset of the state containing only the information necessary for making routing decisions, used by the routing algorithms.
-
 ## Installation
 
 1. **Clone the repository**:
