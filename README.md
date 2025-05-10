@@ -4,12 +4,13 @@ A Python implementation of a dynamic vehicle routing system for restaurant meal 
 
 ## Overview
 
-The Restaurant Meal Delivery Problem (RMDP) addresses the challenge of efficiently assigning and delivering meal orders to customers using a fleet of vehicles. This implementation:
+The Restaurant Meal Delivery Problem (RMDP) tackles the complex task of managing food delivery operations for online platforms like Meituan, focusing on dynamic order assignment and routing. This implementation:
 
-- Dynamically assigns incoming orders to delivery vehicles.
-- Updates routes in real-time based on food preparation times and traffic conditions.
-- Optimizes delivery operations to balance customer satisfaction, restaurant efficiency, and vehicle utilization.
-- Visualizes vehicle movements and delivery statuses in real-time.
+- Dynamically assigns incoming orders to couriers in real-time, adapting to continuous order arrivals and unpredictable timing.
+- Optimizes routes under uncertain food preparation times and deterministic travel times, ensuring timely deliveries.
+- Balances multiple stakeholder objectives, including customer satisfaction (timely deliveries and food quality), courier efficiency (fair workload and minimal idle time), restaurant reputation (prompt pickups), and platform efficiency.
+- Incorporates real-time decision-making to handle the dynamic and stochastic nature of the RMDP, inspired by the Meituan Challenge dataset.
+
 
 ## Features
 
