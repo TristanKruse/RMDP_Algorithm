@@ -360,7 +360,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(level
 logger = logging.getLogger(__name__)
 
 class ReplayBuffer:
-    def __init__(self, capacity=50000):
+    def __init__(self, capacity=10000):
         self.buffer = deque(maxlen=capacity)
         
     def add(self, state, action, reward, delta_t):
@@ -395,10 +395,10 @@ class RLPostponementDecision:
         min_exploration_rate: float = 0.2,
         batch_size: int = 64,
         training_mode: bool = True,
-        state_size: int = 6,
+        state_size: int = 7,
         lns_sample_size: int = 5,
         target_update_frequency: int = 50,
-        replay_buffer_capacity: int = 50000,
+        replay_buffer_capacity: int = 10000,
         bundling_reward: float = 0.05,
         postponement_penalty: float = -0.005,
         on_time_reward: float = 0.2
@@ -487,13 +487,23 @@ class RLPostponementDecision:
                 orders_per_vehicle = orders_assigned_to_restaurant / vehicles_heading_to_restaurant
                 restaurant_congestion = min(1.0, orders_per_vehicle / 5.0)
             features.append(restaurant_congestion)
+
+            # Add postpone_count feature
+            postpone_count = order_info.get("postpone_count", 0)
+            max_postponements = 10  # Normalize by a reasonable maximum
+            normalized_postpone_count = min(1.0, postpone_count / max_postponements)
+            features.append(normalized_postpone_count)
+
         else:
-            features.extend([0.0, 0.0, 0.0])
+            features.extend([0.0, 0.0, 0.0, 0.0])
         
         if len(features) < self.state_size:
             features.extend([0.0] * (self.state_size - len(features)))
         elif len(features) > self.state_size:
             features = features[:self.state_size]
+
+        # Log the feature vector
+        # logger.info(f"Time {current_time:.2f}: Feature vector for order {order_id}: {features}")
 
         features = [round(f, 4) for f in features]
         return torch.tensor(features, dtype=torch.float32)
@@ -514,6 +524,9 @@ class RLPostponementDecision:
             should_postpone = action == 1
         else:
             should_postpone = self._greedy_action_selection(state_tensor)
+
+        # Log the feature vector and postponement decision
+        #logger.info(f"Time {current_time:.2f}: Order {order_id} - Features: {state_tensor.tolist()}, Decision: {'Postpone' if should_postpone else 'Do Not Postpone'} (Exploration rate: {current_exploration:.3f})")
 
         if self.training_mode:
             if order_id not in self.order_tracker:
@@ -536,6 +549,7 @@ class RLPostponementDecision:
                     reward=self.postponement_penalty,
                     delta_t=0
                 )
+                #print(f"Replay buffer length after adding postponement experience: {len(self.replay_buffer)}")
                 if len(self.replay_buffer) >= self.batch_size:
                     self._update_model()
 
@@ -560,17 +574,18 @@ class RLPostponementDecision:
                 normalized_reward += self.bundling_reward
                 logger.debug(f"Order {order_id} was bundled, adding bundling reward: {self.bundling_reward}")
             
-            for i, (state_tensor, action, action_time) in enumerate(order_data['actions']):
-                delta_t = current_time - action_time if current_time else 0
-                self.replay_buffer.add(
-                    state=state_tensor.unsqueeze(0),
-                    action=action,
-                    reward=normalized_reward,
-                    delta_t=delta_t
-                )
-                experiences_added += 1
+            if self.training_mode:
+                for i, (state_tensor, action, action_time) in enumerate(order_data['actions']):
+                    delta_t = current_time - action_time if current_time else 0
+                    self.replay_buffer.add(
+                        state=state_tensor.unsqueeze(0),
+                        action=action,
+                        reward=normalized_reward,
+                        delta_t=delta_t
+                    )
+                    experiences_added += 1
         
-        if len(self.replay_buffer) >= self.batch_size:
+        if self.training_mode and len(self.replay_buffer) >= self.batch_size:
             self._update_model()
         
         for order_id in self.completed_orders:
@@ -635,10 +650,10 @@ class RLPostponementDecision:
         with torch.no_grad():
             discount_factors = torch.pow(self.discount_factor, delta_ts)
             target_q = rewards * discount_factors
-            logger.debug(f"Batch stats: Reward mean={rewards.mean().item():.2f}, "
-                         f"Discount factor mean={discount_factors.mean().item():.2f}, "
-                         f"Target Q mean={target_q.mean().item():.2f}, "
-                         f"Current Q mean={current_q.mean().item():.2f}")
+            # logger.debug(f"Batch stats: Reward mean={rewards.mean().item():.2f}, "
+            #              f"Discount factor mean={discount_factors.mean().item():.2f}, "
+            #              f"Target Q mean={target_q.mean().item():.2f}, "
+            #              f"Current Q mean={current_q.mean().item():.2f}")
 
         loss = self.criterion(current_q, target_q)
         self.optimizer.zero_grad()

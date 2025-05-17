@@ -136,6 +136,14 @@ class RestaurantMealDeliveryEnv:
         # logger.info(f"self.current_time: {self.current_time}")
         # 1. Unpack the solver's action
         new_route_plan, postponed_orders = action
+        
+        # Increment postpone_count for each postponed order
+        for order_id in postponed_orders:
+            for order in self.order_manager.active_orders:
+                if order.id == order_id:
+                    order.postpone_count += 1  # Increment the existing postpone_count attribute
+                    # logger.info(f"Time {self.current_time:.2f}: Order {order_id} postponed, postpone_count: {order.postpone_count}")
+                    break
 
         self.route_plans = new_route_plan
 

@@ -1,5 +1,4 @@
 # train_rl.py - Simplified to focus on phased training
-from models.aca_policy.rl_postponement import RLPostponementDecision
 import os
 import logging
 import matplotlib.pyplot as plt
@@ -7,7 +6,7 @@ import numpy as np
 from datetime import datetime
 from tqdm import tqdm
 from typing import Dict, List, Tuple
-from train import run_test_episode, get_env_config
+from train import run_test_episode
 import json
 import shutil
 
@@ -20,9 +19,654 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+# def train_rl_aca(
+#     phases: List[Dict],
+#     save_interval: int = 20,
+#     stability_window: int = 10,       # Window for stability assessment
+#     stability_threshold: float = 3.0, # Max percent change considered stable
+#     seed: int = 1,
+#     visualize: bool = False,
+#     reposition_idle_vehicles: bool = False,
+#     model_dir: str = "data/models",
+#     resume_from_model: str = None,    # Support resuming
+#     start_phase: int = 0,             # Phase to start from when resuming
+#     start_episode: int = 0,           # Episode to start from when resuming
+#     exploration_start: float = 0.9,   # Initial exploration rate
+#     exploration_end: float = 0.05,     # Final exploration rate
+#     decay_method: str = "exponential",     # "linear" or "exponential"
+#     decay_rate: float = 0.999,         # For exponential decay
+#     # RL hyperparameters
+#     rl_learning_rate: float = 0.0005,
+#     rl_discount_factor: float = 0.95,
+#     rl_exploration_rate: float = 0.9,
+#     rl_exploration_decay: float = 0.99,
+#     rl_min_exploration_rate: float = 0.2,
+#     rl_batch_size: int = 64,
+#     rl_target_update_frequency: int = 50,
+#     rl_replay_buffer_capacity: int = 50000,
+#     rl_bundling_reward: float = 0.05,
+#     rl_postponement_penalty: float = -0.005,
+#     rl_on_time_reward: float = 0.2
+#     ):
+#     """
+#     Train the RL-based ACA solver through multiple progressive phases.
+#     """
+#     # Create model directory if it doesn't exist
+#     os.makedirs(model_dir, exist_ok=True)
+    
+#     # Generate timestamp for this training run
+#     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    
+#     # Create directory for phase-specific data
+#     phase_dir = os.path.join(model_dir, f"phased_training_{timestamp}")
+#     os.makedirs(phase_dir, exist_ok=True)
+    
+#     # Use a single latest model path that will be updated throughout training
+#     latest_model_path = os.path.join(phase_dir, "rl_aca_latest.pt")
+    
+#     # Set initial model path if resuming
+#     current_model_path = resume_from_model if resume_from_model else latest_model_path
+    
+#     # Save phase configurations for reference
+#     with open(os.path.join(phase_dir, "phase_configs.json"), "w") as f:
+#         json.dump(phases, f, indent=4)
+    
+#     # Initialize overall metrics
+#     all_metrics = {
+#         "phase_transitions": [],
+#         "rewards": [],
+#         "delays": [],
+#         "on_time_rates": [],
+#         "postponement_rates": [],
+#         "losses": []  # Add a list to track all losses
+#     }
+
+#     # Initialize exploration rate at the start
+#     current_exploration_rate = exploration_start
+    
+#     # Calculate total episodes across all phases
+#     max_total_episodes = sum(phase.get("max_episodes", 100) for phase in phases)
+    
+#     # If resuming, attempt to load metrics from previous runs
+#     if resume_from_model:
+#         resume_dir = os.path.dirname(resume_from_model)
+#         metrics_file = os.path.join(resume_dir, f"phased_metrics_{os.path.basename(resume_dir).split('_')[-1]}.npz")
+#         if os.path.exists(metrics_file):
+#             saved_metrics = np.load(metrics_file, allow_pickle=True)
+#             all_metrics = {
+#                 "phase_transitions": saved_metrics["phase_transitions"].tolist(),
+#                 "rewards": saved_metrics["rewards"].tolist(),
+#                 "delays": saved_metrics["delays"].tolist(),
+#                 "on_time_rates": saved_metrics["on_time_rates"].tolist(),
+#                 "postponement_rates": saved_metrics["postponement_rates"].tolist(),
+#                 "losses": saved_metrics.get("losses", []).tolist()
+#             }
+#             logger.info(f"Resuming training from phase {start_phase}, episode {start_episode}")
+    
+#     # Training loop through phases
+#     current_phase_idx = start_phase
+#     total_completed_episodes = 0  # For exploration rate
+
+#     while current_phase_idx < len(phases):
+#         current_phase = phases[current_phase_idx]
+#         phase_name = current_phase.get("name", f"Phase {current_phase_idx + 1}")
+        
+#         logger.info(f"\n{'=' * 80}\nStarting phase {current_phase_idx + 1}/{len(phases)}: {phase_name}")
+#         logger.info(f"Environment: {current_phase['env_config']}")
+#         logger.info(f"Performance criteria: {current_phase['performance_criteria']}\n{'=' * 80}")
+        
+#         # Initialize phase-specific metrics
+#         phase_metrics = {
+#             "rewards": [],
+#             "delays": [],
+#             "on_time_rates": [],
+#             "postponement_rates": []
+#         }
+        
+#         # Process episodes for the current phase
+#         episode_in_phase = start_episode if current_phase_idx == start_phase else 0
+#         phase_complete = False
+#         min_episodes = current_phase.get("min_episodes", 20)
+#         max_episodes = current_phase.get("max_episodes", 100)
+        
+#         # Create progress bar for this phase
+#         total_possible = max_episodes - episode_in_phase
+#         with tqdm(total=total_possible, desc=f"Phase {current_phase_idx + 1}/{len(phases)}: {phase_name}") as pbar:
+#             while not phase_complete:
+#                 # Pass phase-specific environment parameters
+#                 env_config = current_phase["env_config"]
+                
+#                 # Log current model status
+#                 if episode_in_phase == 0:
+#                     logger.info(f"Starting phase with model: {current_model_path}")
+#                 else:
+#                     logger.info(f"Using model: {latest_model_path}")
+      
+#                 # Update exploration rate based on selected decay method (continuous across phases)
+#                 if decay_method == "linear":
+#                     progress = total_completed_episodes / max_total_episodes
+#                     current_exploration_rate = max(
+#                         exploration_end,
+#                         exploration_start - (exploration_start - exploration_end) * progress
+#                     )
+#                 elif decay_method == "exponential":
+#                     # If this is not the first episode, apply exponential decay
+#                     if current_phase_idx > 0 or episode_in_phase > 0:
+#                         current_exploration_rate = max(
+#                             exploration_end,
+#                             current_exploration_rate * decay_rate
+#                         )
+
+#                 # Run test episode - always save to the same latest model path
+#                 stats = run_test_episode(
+#                     solver_name="rl_aca",
+#                     # seed=seed + episode_in_phase,  # Different seed each episode for diversity
+#                     seed=seed,
+#                     reposition_idle_vehicles=reposition_idle_vehicles,
+#                     visualize=visualize and episode_in_phase % 20 == 0,
+#                     save_rl_model=True,
+#                     rl_model_path=latest_model_path,  # Always use the latest model path
+#                     save_results_to_disk=False,
+#                     env_config=env_config,
+#                     exploration_rate=current_exploration_rate,
+#                     # Pass RL hyperparameters
+#                     rl_learning_rate=rl_learning_rate,
+#                     rl_discount_factor=rl_discount_factor,
+#                     rl_exploration_rate=rl_exploration_rate,
+#                     rl_exploration_decay=rl_exploration_decay,
+#                     rl_min_exploration_rate=rl_min_exploration_rate,
+#                     rl_batch_size=rl_batch_size,
+#                     rl_target_update_frequency=rl_target_update_frequency,
+#                     rl_replay_buffer_capacity=rl_replay_buffer_capacity,
+#                     rl_bundling_reward=rl_bundling_reward,
+#                     rl_postponement_penalty=rl_postponement_penalty,
+#                     rl_on_time_reward=rl_on_time_reward
+#                 )
+                
+#                 # Update metrics
+#                 reward = stats["total_reward"]
+#                 delay = sum(stats["delay_values"]) if stats["delay_values"] else 0
+                
+#                 total_orders = max(1, stats["orders_delivered"])
+#                 late_orders = len(stats["late_orders"])
+#                 on_time_rate = ((total_orders - late_orders) / total_orders) * 100
+                
+#                 postponement_rate = len(stats["postponed_orders"]) / max(1, stats["total_orders"]) * 100
+                
+#                 # Update phase metrics
+#                 phase_metrics["rewards"].append(reward)
+#                 phase_metrics["delays"].append(delay)
+#                 phase_metrics["on_time_rates"].append(on_time_rate)
+#                 phase_metrics["postponement_rates"].append(postponement_rate)
+                
+#                 # Update overall metrics
+#                 all_metrics["rewards"].append(reward)
+#                 all_metrics["delays"].append(delay)
+#                 all_metrics["on_time_rates"].append(on_time_rate)
+#                 all_metrics["postponement_rates"].append(postponement_rate)
+                
+
+#                 # Extract losses from the solver and append to all_metrics["losses"]
+#                 try:
+#                     solver = RLPostponementDecision()
+#                     solver.load_model(latest_model_path)
+#                     episode_losses = solver.batch_losses  # Get the losses for this episode
+#                     all_metrics["losses"].extend(episode_losses)  # Append to the cumulative list
+#                 except Exception as e:
+#                     logger.warning(f"Failed to extract losses: {e}")
+
+#                 # Plot losses at save intervals, overwriting the same file
+#                 if (episode_in_phase + 1) % save_interval == 0:
+#                     loss_plot_path = os.path.join(phase_dir, "loss_plot.png")  # Single file, overwritten
+#                     plot_losses(
+#                         losses=all_metrics["losses"],
+#                         save_path=loss_plot_path,
+#                         window_size=20,
+#                         phase_idx=current_phase_idx + 1,
+#                         episode_idx=episode_in_phase + 1,
+#                         total_steps=len(all_metrics["losses"])
+#                     )
+#                     logger.info(f"Updated loss plot at {loss_plot_path}")
+
+
+
+#                 # Update progress bar with key metrics             
+#                 pbar.set_postfix({
+#                     'reward': f"{reward:.2f}".ljust(10), 
+#                     'on-time': f"{on_time_rate:.1f}%".ljust(10),
+#                     'delay': f"{delay:.1f}".ljust(8),
+#                     #'seed': f"{seed + episode_in_phase}",
+#                     'seed': f"{seed}".ljust(6),
+#                     'explore': f"{current_exploration_rate:.3f}".ljust(8),  # Add exploration rate
+#                     'postponed': f"{postponement_rate:.1f}%".ljust(8)
+#                 })
+#                 pbar.update(1)
+                
+#                 # Save checkpoints at regular intervals
+#                 if (episode_in_phase + 1) % save_interval == 0:
+#                     # Create checkpoint name
+#                     checkpoint_path = os.path.join(phase_dir, f"rl_aca_phase{current_phase_idx+1}_ep{episode_in_phase+1}.pt")
+                    
+#                     # Create resuming info
+#                     resume_info = {
+#                         "phase": current_phase_idx,
+#                         "episode": episode_in_phase + 1,
+#                         "timestamp": timestamp,
+#                     }
+                    
+#                     # Save resuming info
+#                     with open(os.path.join(phase_dir, "resuming_info.json"), "w") as f:
+#                         json.dump(resume_info, f)
+                    
+#                     # Copy latest model to checkpoint
+#                     if os.path.exists(latest_model_path):
+#                         try:
+#                             shutil.copy(latest_model_path, checkpoint_path)
+#                             logger.info(f"Saved checkpoint to {checkpoint_path}")
+#                         except Exception as e:
+#                             logger.error(f"Failed to save checkpoint: {e}")
+#                     else:
+#                         logger.warning(f"Could not save checkpoint: Model file {latest_model_path} does not exist")
+                    
+#                     # Save metrics
+#                     metrics_file = os.path.join(phase_dir, f"phased_metrics_{timestamp}.npz")
+#                     np.savez(
+#                         metrics_file, 
+#                         phase_transitions=np.array(all_metrics["phase_transitions"]),
+#                         rewards=np.array(all_metrics["rewards"]),
+#                         delays=np.array(all_metrics["delays"]),
+#                         on_time_rates=np.array(all_metrics["on_time_rates"]),
+#                         postponement_rates=np.array(all_metrics["postponement_rates"])
+#                     )
+                
+#                 # Check if phase completion criteria are met
+#                 criteria_met, reason = check_phase_criteria(
+#                     phase_metrics=phase_metrics,
+#                     episode_count=episode_in_phase + 1,
+#                     min_episodes=min_episodes,
+#                     max_episodes=max_episodes,
+#                     stability_window=stability_window,
+#                     stability_threshold=stability_threshold,
+#                     performance_criteria=current_phase["performance_criteria"]
+#                 )
+                
+#                 # Check if phase is complete
+#                 if criteria_met or episode_in_phase >= max_episodes:
+#                     phase_complete = True
+                    
+#                     # Save phase transition point
+#                     all_metrics["phase_transitions"].append(len(all_metrics["rewards"]) - 1)
+                    
+#                     # Save phase final model
+#                     phase_final_path = os.path.join(phase_dir, f"rl_aca_phase{current_phase_idx+1}_final.pt")
+#                     if os.path.exists(latest_model_path):
+#                         try:
+#                             shutil.copy(latest_model_path, phase_final_path)
+#                             logger.info(f"Phase {current_phase_idx + 1} final model saved to {phase_final_path}")
+#                         except Exception as e:
+#                             logger.error(f"Failed to create final model: {e}")
+#                     else:
+#                         logger.warning(f"Cannot create final model - source file {latest_model_path} not found")
+                    
+#                     # Plot phase results
+#                     plot_phase_results(phase_metrics, current_phase_idx, phase_name, phase_dir, timestamp)
+                    
+#                     # Log completion message
+#                     if criteria_met:
+#                         logger.info(f"Phase {current_phase_idx + 1} completed after {episode_in_phase + 1} episodes")
+#                         logger.info(f"Reason: {reason}")
+                
+#                 # Increment episode counter
+#                 episode_in_phase += 1
+#                 total_completed_episodes += 1  # Increment total completed episodes
+
+#         # Move to next phase
+#         current_phase_idx += 1
+#         start_episode = 0  # Reset episode counter for next phase
+    
+#     # Training complete - plot overall results
+#     plot_training_results(all_metrics, phases, phase_dir, timestamp)
+    
+#     # Get path to final model
+#     final_model_path = os.path.join(phase_dir, f"rl_aca_phase{len(phases)}_final.pt")
+    
+#     logger.info(f"Phased training completed. Final model saved to {final_model_path}")
+#     return final_model_path
+
+
+
+
+# def train_rl_aca(
+#     phases: List[Dict],
+#     save_interval: int = 20,
+#     stability_window: int = 10,       # Window for stability assessment
+#     stability_threshold: float = 3.0, # Max percent change considered stable
+#     seed: int = 1,
+#     visualize: bool = False,
+#     reposition_idle_vehicles: bool = False,
+#     model_dir: str = "data/models",
+#     resume_from_model: str = None,    # Support resuming
+#     start_phase: int = 0,             # Phase to start from when resuming
+#     start_episode: int = 0,           # Episode to start from when resuming
+#     exploration_start: float = 0.9,   # Initial exploration rate
+#     exploration_end: float = 0.05,    # Final exploration rate
+#     decay_method: str = "exponential",# "linear" or "exponential"
+#     decay_rate: float = 0.999,        # For exponential decay
+#     # RL hyperparameters
+#     rl_learning_rate: float = 0.0005,
+#     rl_discount_factor: float = 0.95,
+#     rl_exploration_rate: float = 0.9,
+#     rl_exploration_decay: float = 0.99,
+#     rl_min_exploration_rate: float = 0.2,
+#     rl_batch_size: int = 64,
+#     rl_target_update_frequency: int = 50,
+#     rl_replay_buffer_capacity: int = 10000,
+#     rl_bundling_reward: float = 0.05,
+#     rl_postponement_penalty: float = -0.005,
+#     rl_on_time_reward: float = 0.2
+#     ):
+#     """
+#     Train the RL-based ACA solver through multiple progressive phases.
+#     """
+#     # Create model directory if it doesn't exist
+#     os.makedirs(model_dir, exist_ok=True)
+    
+#     # Generate timestamp for this training run
+#     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    
+#     # Create directory for phase-specific data
+#     phase_dir = os.path.join(model_dir, f"phased_training_{timestamp}")
+#     os.makedirs(phase_dir, exist_ok=True)
+    
+#     # Use a single latest model path that will be updated throughout training
+#     latest_model_path = os.path.join(phase_dir, "rl_aca_latest.pt")
+    
+#     # Set initial model path if resuming
+#     current_model_path = resume_from_model if resume_from_model else latest_model_path
+    
+#     # Save phase configurations for reference
+#     with open(os.path.join(phase_dir, "phase_configs.json"), "w") as f:
+#         json.dump(phases, f, indent=4)
+    
+#     # Initialize overall metrics
+#     all_metrics = {
+#         "phase_transitions": [],
+#         "rewards": [],
+#         "delays": [],
+#         "on_time_rates": [],
+#         "postponement_rates": [],
+#         "losses": []  # Add a list to track all losses
+#     }
+
+#     # Initialize exploration rate at the start
+#     current_exploration_rate = exploration_start
+    
+#     # Calculate total episodes across all phases
+#     max_total_episodes = sum(phase.get("max_episodes", 100) for phase in phases)
+    
+#     # If resuming, attempt to load metrics from previous runs
+#     if resume_from_model:
+#         resume_dir = os.path.dirname(resume_from_model)
+#         metrics_file = os.path.join(resume_dir, f"phased_metrics_{os.path.basename(resume_dir).split('_')[-1]}.npz")
+#         if os.path.exists(metrics_file):
+#             saved_metrics = np.load(metrics_file, allow_pickle=True)
+#             all_metrics = {
+#                 "phase_transitions": saved_metrics["phase_transitions"].tolist(),
+#                 "rewards": saved_metrics["rewards"].tolist(),
+#                 "delays": saved_metrics["delays"].tolist(),
+#                 "on_time_rates": saved_metrics["on_time_rates"].tolist(),
+#                 "postponement_rates": saved_metrics["postponement_rates"].tolist(),
+#                 "losses": saved_metrics.get("losses", []).tolist()
+#             }
+#             logger.info(f"Resuming training from phase {start_phase}, episode {start_episode}")
+    
+#     # Create the solver once before the episode loop to persist the replay buffer
+#     from train import SOLVERS, RestaurantMealDeliveryEnv, get_env_config  # Ensure necessary imports
+#     speed = 16  # From run_test_episode
+#     street_network_factor = 1.0
+#     movement_per_step = (speed / 60) / street_network_factor
+#     # Create a temporary environment to get the location_manager
+#     env_params = get_env_config(movement_per_step)
+#     env_params.update({"seed": seed, "reposition_idle_vehicles": reposition_idle_vehicles, "visualize": visualize})
+#     temp_env = RestaurantMealDeliveryEnv(**env_params)
+#     solver = SOLVERS["rl_aca"](movement_per_step, temp_env.location_manager)
+#     # Load the RL model if resuming
+#     if current_model_path and os.path.exists(current_model_path):
+#         solver.postponement.load_model(current_model_path)
+#         logger.info(f"Loaded model from {current_model_path} for solver")
+
+#     # Training loop through phases
+#     current_phase_idx = start_phase
+#     total_completed_episodes = 0  # For exploration rate
+
+#     while current_phase_idx < len(phases):
+#         current_phase = phases[current_phase_idx]
+#         phase_name = current_phase.get("name", f"Phase {current_phase_idx + 1}")
+        
+#         logger.info(f"\n{'=' * 80}\nStarting phase {current_phase_idx + 1}/{len(phases)}: {phase_name}")
+#         logger.info(f"Environment: {current_phase['env_config']}")
+#         logger.info(f"Performance criteria: {current_phase['performance_criteria']}\n{'=' * 80}")
+        
+#         # Initialize phase-specific metrics
+#         phase_metrics = {
+#             "rewards": [],
+#             "delays": [],
+#             "on_time_rates": [],
+#             "postponement_rates": []
+#         }
+        
+#         # Process episodes for the current phase
+#         episode_in_phase = start_episode if current_phase_idx == start_phase else 0
+#         phase_complete = False
+#         min_episodes = current_phase.get("min_episodes", 20)
+#         max_episodes = current_phase.get("max_episodes", 100)
+        
+#         # Create progress bar for this phase
+#         total_possible = max_episodes - episode_in_phase
+#         with tqdm(total=total_possible, desc=f"Phase {current_phase_idx + 1}/{len(phases)}: {phase_name}") as pbar:
+#             while not phase_complete:
+#                 # Pass phase-specific environment parameters
+#                 env_config = current_phase["env_config"]
+                
+#                 # Log current model status
+#                 if episode_in_phase == 0:
+#                     logger.info(f"Starting phase with model: {current_model_path}")
+#                 else:
+#                     logger.info(f"Using model: {latest_model_path}")
+      
+#                 # Update exploration rate based on selected decay method (continuous across phases)
+#                 if decay_method == "linear":
+#                     progress = total_completed_episodes / max_total_episodes
+#                     current_exploration_rate = max(
+#                         exploration_end,
+#                         exploration_start - (exploration_start - exploration_end) * progress
+#                     )
+#                 elif decay_method == "exponential":
+#                     # If this is not the first episode, apply exponential decay
+#                     if current_phase_idx > 0 or episode_in_phase > 0:
+#                         current_exploration_rate = max(
+#                             exploration_end,
+#                             current_exploration_rate * decay_rate
+#                         )
+
+#                 # Run test episode - always save to the same latest model path, using the same solver
+#                 stats = run_test_episode(
+#                     solver_name="rl_aca",
+#                     solver=solver,  # Pass the same solver instance to persist the replay buffer
+#                     seed=seed,
+#                     reposition_idle_vehicles=reposition_idle_vehicles,
+#                     visualize=visualize and episode_in_phase % 20 == 0,
+#                     save_rl_model=True,
+#                     rl_model_path=latest_model_path,  # Always use the latest model path
+#                     save_results_to_disk=False,
+#                     env_config=env_config,
+#                     exploration_rate=current_exploration_rate,
+#                     # Pass RL hyperparameters
+#                     rl_learning_rate=rl_learning_rate,
+#                     rl_discount_factor=rl_discount_factor,
+#                     rl_exploration_rate=rl_exploration_rate,
+#                     rl_exploration_decay=rl_exploration_decay,
+#                     rl_min_exploration_rate=rl_min_exploration_rate,
+#                     rl_batch_size=rl_batch_size,
+#                     rl_target_update_frequency=rl_target_update_frequency,
+#                     rl_replay_buffer_capacity=rl_replay_buffer_capacity,
+#                     rl_bundling_reward=rl_bundling_reward,
+#                     rl_postponement_penalty=rl_postponement_penalty,
+#                     rl_on_time_reward=rl_on_time_reward
+#                 )
+                
+#                 # Update metrics
+#                 reward = stats["total_reward"]
+#                 delay = sum(stats["delay_values"]) if stats["delay_values"] else 0
+                
+#                 total_orders = max(1, stats["orders_delivered"])
+#                 late_orders = len(stats["late_orders"])
+#                 on_time_rate = ((total_orders - late_orders) / total_orders) * 100
+                
+#                 postponement_rate = len(stats["postponed_orders"]) / max(1, stats["total_orders"]) * 100
+                
+#                 # Update phase metrics
+#                 phase_metrics["rewards"].append(reward)
+#                 phase_metrics["delays"].append(delay)
+#                 phase_metrics["on_time_rates"].append(on_time_rate)
+#                 phase_metrics["postponement_rates"].append(postponement_rate)
+                
+#                 # Update overall metrics
+#                 all_metrics["rewards"].append(reward)
+#                 all_metrics["delays"].append(delay)
+#                 all_metrics["on_time_rates"].append(on_time_rate)
+#                 all_metrics["postponement_rates"].append(postponement_rate)
+                
+#                 # Extract losses from the solver and append to all_metrics["losses"]
+#                 try:
+#                     # Use the existing solver instance instead of creating a new one
+#                     episode_losses = solver.postponement.batch_losses  # Get the losses for this episode
+#                     all_metrics["losses"].extend(episode_losses)  # Append to the cumulative list
+#                 except Exception as e:
+#                     logger.warning(f"Failed to extract losses: {e}")
+
+#                 # Plot losses at save intervals, overwriting the same file
+#                 if (episode_in_phase + 1) % save_interval == 0:
+#                     loss_plot_path = os.path.join(phase_dir, "loss_plot.png")  # Single file, overwritten
+#                     plot_losses(
+#                         losses=all_metrics["losses"],
+#                         save_path=loss_plot_path,
+#                         window_size=20,
+#                         phase_idx=current_phase_idx + 1,
+#                         episode_idx=episode_in_phase + 1,
+#                         total_steps=len(all_metrics["losses"])
+#                     )
+#                     logger.info(f"Updated loss plot at {loss_plot_path}")
+
+#                 # Update progress bar with key metrics             
+#                 pbar.set_postfix({
+#                     'reward': f"{reward:.2f}".ljust(10), 
+#                     'on-time': f"{on_time_rate:.1f}%".ljust(10),
+#                     'delay': f"{delay:.1f}".ljust(8),
+#                     #'seed': f"{seed + episode_in_phase}",
+#                     'seed': f"{seed}".ljust(6),
+#                     'explore': f"{current_exploration_rate:.3f}".ljust(8),  # Add exploration rate
+#                     'postponed': f"{postponement_rate:.1f}%".ljust(8)
+#                 })
+#                 pbar.update(1)
+                
+#                 # Save checkpoints at regular intervals
+#                 if (episode_in_phase + 1) % save_interval == 0:
+#                     # Create checkpoint name
+#                     checkpoint_path = os.path.join(phase_dir, f"rl_aca_phase{current_phase_idx+1}_ep{episode_in_phase+1}.pt")
+                    
+#                     # Create resuming info
+#                     resume_info = {
+#                         "phase": current_phase_idx,
+#                         "episode": episode_in_phase + 1,
+#                         "timestamp": timestamp,
+#                     }
+                    
+#                     # Save resuming info
+#                     with open(os.path.join(phase_dir, "resuming_info.json"), "w") as f:
+#                         json.dump(resume_info, f)
+                    
+#                     # Copy latest model to checkpoint
+#                     if os.path.exists(latest_model_path):
+#                         try:
+#                             shutil.copy(latest_model_path, checkpoint_path)
+#                             logger.info(f"Saved checkpoint to {checkpoint_path}")
+#                         except Exception as e:
+#                             logger.error(f"Failed to save checkpoint: {e}")
+#                     else:
+#                         logger.warning(f"Could not save checkpoint: Model file {latest_model_path} does not exist")
+                    
+#                     # Save metrics
+#                     metrics_file = os.path.join(phase_dir, f"phased_metrics_{timestamp}.npz")
+#                     np.savez(
+#                         metrics_file, 
+#                         phase_transitions=np.array(all_metrics["phase_transitions"]),
+#                         rewards=np.array(all_metrics["rewards"]),
+#                         delays=np.array(all_metrics["delays"]),
+#                         on_time_rates=np.array(all_metrics["on_time_rates"]),
+#                         postponement_rates=np.array(all_metrics["postponement_rates"])
+#                     )
+                
+#                 # Check if phase completion criteria are met
+#                 criteria_met, reason = check_phase_criteria(
+#                     phase_metrics=phase_metrics,
+#                     episode_count=episode_in_phase + 1,
+#                     min_episodes=min_episodes,
+#                     max_episodes=max_episodes,
+#                     stability_window=stability_window,
+#                     stability_threshold=stability_threshold,
+#                     performance_criteria=current_phase["performance_criteria"]
+#                 )
+                
+#                 # Check if phase is complete
+#                 if criteria_met or episode_in_phase >= max_episodes:
+#                     phase_complete = True
+                    
+#                     # Save phase transition point
+#                     all_metrics["phase_transitions"].append(len(all_metrics["rewards"]) - 1)
+                    
+#                     # Save phase final model
+#                     phase_final_path = os.path.join(phase_dir, f"rl_aca_phase{current_phase_idx+1}_final.pt")
+#                     if os.path.exists(latest_model_path):
+#                         try:
+#                             shutil.copy(latest_model_path, phase_final_path)
+#                             logger.info(f"Phase {current_phase_idx + 1} final model saved to {phase_final_path}")
+#                         except Exception as e:
+#                             logger.error(f"Failed to create final model: {e}")
+#                     else:
+#                         logger.warning(f"Cannot create final model - source file {latest_model_path} not found")
+                    
+#                     # Plot phase results
+#                     plot_phase_results(phase_metrics, current_phase_idx, phase_name, phase_dir, timestamp)
+                    
+#                     # Log completion message
+#                     if criteria_met:
+#                         logger.info(f"Phase {current_phase_idx + 1} completed after {episode_in_phase + 1} episodes")
+#                         logger.info(f"Reason: {reason}")
+                
+#                 # Increment episode counter
+#                 episode_in_phase += 1
+#                 total_completed_episodes += 1  # Increment total completed episodes
+
+#         # Move to next phase
+#         current_phase_idx += 1
+#         start_episode = 0  # Reset episode counter for next phase
+    
+#     # Training complete - plot overall results
+#     plot_training_results(all_metrics, phases, phase_dir, timestamp)
+    
+#     # Get path to final model
+#     final_model_path = os.path.join(phase_dir, f"rl_aca_phase{len(phases)}_final.pt")
+    
+#     logger.info(f"Phased training completed. Final model saved to {final_model_path}")
+#     return final_model_path
+
+
+
+
 def train_rl_aca(
     phases: List[Dict],
-    save_interval: int = 20,
+    save_interval: int = 100,
     stability_window: int = 10,       # Window for stability assessment
     stability_threshold: float = 3.0, # Max percent change considered stable
     seed: int = 1,
@@ -33,9 +677,9 @@ def train_rl_aca(
     start_phase: int = 0,             # Phase to start from when resuming
     start_episode: int = 0,           # Episode to start from when resuming
     exploration_start: float = 0.9,   # Initial exploration rate
-    exploration_end: float = 0.05,     # Final exploration rate
-    decay_method: str = "exponential",     # "linear" or "exponential"
-    decay_rate: float = 0.999,         # For exponential decay
+    exploration_end: float = 0.05,    # Final exploration rate
+    decay_method: str = "exponential",# "linear" or "exponential"
+    decay_rate: float = 0.999,        # For exponential decay
     # RL hyperparameters
     rl_learning_rate: float = 0.0005,
     rl_discount_factor: float = 0.95,
@@ -44,7 +688,7 @@ def train_rl_aca(
     rl_min_exploration_rate: float = 0.2,
     rl_batch_size: int = 64,
     rl_target_update_frequency: int = 50,
-    rl_replay_buffer_capacity: int = 50000,
+    rl_replay_buffer_capacity: int = 10000,
     rl_bundling_reward: float = 0.05,
     rl_postponement_penalty: float = -0.005,
     rl_on_time_reward: float = 0.2
@@ -79,7 +723,7 @@ def train_rl_aca(
         "delays": [],
         "on_time_rates": [],
         "postponement_rates": [],
-        "losses": []  # Add a list to track all losses
+        "losses": []  # Add a list to track average loss per episode
     }
 
     # Initialize exploration rate at the start
@@ -104,6 +748,21 @@ def train_rl_aca(
             }
             logger.info(f"Resuming training from phase {start_phase}, episode {start_episode}")
     
+    # Create the solver once before the episode loop to persist the replay buffer
+    from train import SOLVERS, RestaurantMealDeliveryEnv, get_env_config  # Ensure necessary imports
+    speed = 16  # From run_test_episode
+    street_network_factor = 1.0
+    movement_per_step = (speed / 60) / street_network_factor
+    # Create a temporary environment to get the location_manager
+    env_params = get_env_config(movement_per_step)
+    env_params.update({"seed": seed, "reposition_idle_vehicles": reposition_idle_vehicles, "visualize": visualize})
+    temp_env = RestaurantMealDeliveryEnv(**env_params)
+    solver = SOLVERS["rl_aca"](movement_per_step, temp_env.location_manager)
+    # Load the RL model if resuming
+    if current_model_path and os.path.exists(current_model_path):
+        solver.postponement.load_model(current_model_path)
+        logger.info(f"Loaded model from {current_model_path} for solver")
+
     # Training loop through phases
     current_phase_idx = start_phase
     total_completed_episodes = 0  # For exploration rate
@@ -158,11 +817,11 @@ def train_rl_aca(
                             current_exploration_rate * decay_rate
                         )
 
-                # Run test episode - always save to the same latest model path
+                # Run test episode - always save to the same latest model path, using the same solver
                 stats = run_test_episode(
                     solver_name="rl_aca",
-                    # seed=seed + episode_in_phase,  # Different seed each episode for diversity
-                    seed=seed,
+                    solver=solver,  # Pass the same solver instance to persist the replay buffer
+                    seed=seed + current_phase_idx,
                     reposition_idle_vehicles=reposition_idle_vehicles,
                     visualize=visualize and episode_in_phase % 20 == 0,
                     save_rl_model=True,
@@ -170,6 +829,7 @@ def train_rl_aca(
                     save_results_to_disk=False,
                     env_config=env_config,
                     exploration_rate=current_exploration_rate,
+                    training_mode=True,  # Explicitly set to True for training
                     # Pass RL hyperparameters
                     rl_learning_rate=rl_learning_rate,
                     rl_discount_factor=rl_discount_factor,
@@ -206,15 +866,22 @@ def train_rl_aca(
                 all_metrics["on_time_rates"].append(on_time_rate)
                 all_metrics["postponement_rates"].append(postponement_rate)
                 
-
-                # Extract losses from the solver and append to all_metrics["losses"]
+                # Extract the average loss for this episode and append to all_metrics["losses"]
                 try:
-                    solver = RLPostponementDecision()
-                    solver.load_model(latest_model_path)
-                    episode_losses = solver.batch_losses  # Get the losses for this episode
-                    all_metrics["losses"].extend(episode_losses)  # Append to the cumulative list
+                    # Use the existing solver instance instead of creating a new one
+                    episode_losses = solver.postponement.batch_losses  # Get the losses for this episode
+                    if episode_losses:  # Check if there are any losses
+                        avg_episode_loss = sum(episode_losses) / len(episode_losses)
+                        all_metrics["losses"].append(avg_episode_loss)  # Store the average loss for this episode
+                        logger.debug(f"Average loss for episode {episode_in_phase + 1}: {avg_episode_loss:.4f}")
+                    else:
+                        all_metrics["losses"].append(0.0)  # If no losses, append 0
+                        logger.debug(f"No losses recorded for episode {episode_in_phase + 1}")
+                    # Clear batch_losses to prevent memory buildup
+                    solver.postponement.batch_losses = []
                 except Exception as e:
                     logger.warning(f"Failed to extract losses: {e}")
+                    all_metrics["losses"].append(0.0)  # Fallback in case of error
 
                 # Plot losses at save intervals, overwriting the same file
                 if (episode_in_phase + 1) % save_interval == 0:
@@ -225,23 +892,22 @@ def train_rl_aca(
                         window_size=20,
                         phase_idx=current_phase_idx + 1,
                         episode_idx=episode_in_phase + 1,
-                        total_steps=len(all_metrics["losses"])
+                        total_steps=len(all_metrics["losses"])  # Now represents the number of episodes
                     )
                     logger.info(f"Updated loss plot at {loss_plot_path}")
 
-
-
-                # Update progress bar with key metrics             
                 pbar.set_postfix({
-                    'reward': f"{reward:.2f}".ljust(10), 
-                    'on-time': f"{on_time_rate:.1f}%".ljust(10),
-                    'delay': f"{delay:.1f}".ljust(8),
-                    #'seed': f"{seed + episode_in_phase}",
-                    'seed': f"{seed}".ljust(6),
-                    'explore': f"{current_exploration_rate:.3f}".ljust(8),  # Add exploration rate
-                    'postponed': f"{postponement_rate:.1f}%".ljust(8)
+                    'rew': f"{reward:.1f}".ljust(7),          # Shortened to 'rew', reduced precision and padding
+                    'ot': f"{on_time_rate:.0f}%".ljust(5),    # Shortened to 'ot', removed decimal, reduced padding
+                    'del': f"{delay:.0f}".ljust(5),           # Shortened to 'del', removed decimal, reduced padding
+                    'sd': f"{seed}".ljust(4),                 # Shortened to 'sd', reduced padding
+                    'exp': f"{current_exploration_rate:.2f}".ljust(6),  # Shortened to 'exp', reduced precision and padding
+                    'post': f"{postponement_rate:.0f}%".ljust(6),      # Shortened to 'post', removed decimal, reduced padding
+                    'tot': f"{stats['total_orders']}".ljust(4),       # Shortened to 'tot', reduced padding
+                    'deliv': f"{stats['orders_delivered']}".ljust(5)  # Shortened to 'deliv', reduced padding
                 })
                 pbar.update(1)
+                #pbar.update(1)
                 
                 # Save checkpoints at regular intervals
                 if (episode_in_phase + 1) % save_interval == 0:
@@ -654,6 +1320,7 @@ def evaluate_model(
             visualize=visualize,
             rl_model_path=model_path,
             exploration_rate=0.00,
+            training_mode=False,  # Set to False for evaluation
             env_config=env_params  # Pass as a single dictionary
         )
         
@@ -686,7 +1353,7 @@ def compare_models(
     heuristic_episodes: int = 5,
     rl_episodes: int = 5,
     rl_model_path: str = None,
-    seed: int = 200,
+    seed: int = 1,
     visualize: bool = False,
     env_config=None,  # Added parameter for environment config  
     ):
@@ -703,16 +1370,21 @@ def compare_models(
         "total_rewards": [],
         "total_delays": [],
         "on_time_rates": [],
-        "postponement_rates": []
+        "postponement_rates": [],
+        "total_orders": [],      # Add to collect total orders
+        "orders_delivered": []   # Add to collect orders delivered
     }
     
-    for episode in tqdm(range(heuristic_episodes), desc="Running Heuristic ACA"):
+    # Create a tqdm progress bar object for heuristic ACA
+    pbar_heuristic = tqdm(range(heuristic_episodes), desc="Running Heuristic ACA")
+    for episode in pbar_heuristic:
         stats = run_test_episode(
             solver_name="aca",  # Original ACA
             seed=seed + episode,
             reposition_idle_vehicles=False,
             visualize=visualize,
-            env_config=env_params  # Pass as a single parameter instead of unpacking
+            env_config=env_params,  # Pass as a single parameter instead of unpacking
+            training_mode=False  # Not strictly necessary for ACA, but for consistency
         )
         
         heuristic_metrics["total_rewards"].append(stats["total_reward"])
@@ -725,16 +1397,36 @@ def compare_models(
         
         postponement_rate = len(stats["postponed_orders"]) / max(1, stats["total_orders"]) * 100
         heuristic_metrics["postponement_rates"].append(postponement_rate)
+        
+        # Collect new metrics
+        heuristic_metrics["total_orders"].append(stats["total_orders"])
+        heuristic_metrics["orders_delivered"].append(stats["orders_delivered"])
+        
+        # Update progress bar with key metrics
+        pbar_heuristic.set_postfix({
+            'rew': f"{stats['total_reward']:.1f}".ljust(7),
+            'ot': f"{on_time_rate:.0f}%".ljust(5),
+            'del': f"{sum(stats['delay_values']) if stats['delay_values'] else 0:.0f}".ljust(5),
+            'sd': f"{seed + episode}".ljust(4),
+            'post': f"{postponement_rate:.0f}%".ljust(6),
+            'tot': f"{stats['total_orders']}".ljust(4),
+            'deliv': f"{stats['orders_delivered']}".ljust(5),
+            'idle': f"{stats.get('active_period_idle_rate', 0) * 100:.0f}%".ljust(6)
+        })
     
     # Run RL-based ACA episodes
     rl_metrics = {
         "total_rewards": [],
         "total_delays": [],
         "on_time_rates": [],
-        "postponement_rates": []
+        "postponement_rates": [],
+        "total_orders": [],      # Add to collect total orders
+        "orders_delivered": []   # Add to collect orders delivered
     }
     
-    for episode in tqdm(range(rl_episodes), desc="Running RL-based ACA"):
+    # Create a tqdm progress bar object for RL-based ACA
+    pbar_rl = tqdm(range(rl_episodes), desc="Running RL-based ACA")
+    for episode in pbar_rl:
         stats = run_test_episode(
             solver_name="rl_aca",  # RL-based ACA
             seed=seed + episode,
@@ -742,7 +1434,8 @@ def compare_models(
             visualize=visualize,
             rl_model_path=rl_model_path,
             exploration_rate=0.00,
-            env_config=env_params  # Pass as a single parameter instead of unpacking
+            env_config=env_params,  # Pass as a single parameter instead of unpacking
+            training_mode=False  # Not strictly necessary for ACA, but for consistency
         )
         
         rl_metrics["total_rewards"].append(stats["total_reward"])
@@ -755,17 +1448,45 @@ def compare_models(
         
         postponement_rate = len(stats["postponed_orders"]) / max(1, stats["total_orders"]) * 100
         rl_metrics["postponement_rates"].append(postponement_rate)
+        
+        # Collect new metrics
+        rl_metrics["total_orders"].append(stats["total_orders"])
+        rl_metrics["orders_delivered"].append(stats["orders_delivered"])
+        
+        # Log detailed metrics for debugging
+        logger.debug(f"RL-ACA Episode {episode + 1} (Seed {seed + episode}): "
+                     f"Total Orders={stats['total_orders']}, "
+                     f"Orders Delivered={stats['orders_delivered']}, "
+                     f"Postponement Rate={postponement_rate:.1f}%, "
+                     f"Idle Rate={stats.get('active_period_idle_rate', 0) * 100:.1f}%")
+        
+        # Update progress bar with key metrics
+        pbar_rl.set_postfix({
+            'rew': f"{stats['total_reward']:.1f}".ljust(7),
+            'ot': f"{on_time_rate:.0f}%".ljust(5),
+            'del': f"{sum(stats['delay_values']) if stats['delay_values'] else 0:.0f}".ljust(5),
+            'sd': f"{seed + episode}".ljust(4),
+            'post': f"{postponement_rate:.0f}%".ljust(6),
+            'tot': f"{stats['total_orders']}".ljust(4),
+            'deliv': f"{stats['orders_delivered']}".ljust(5),
+            'idle': f"{stats.get('active_period_idle_rate', 0) * 100:.0f}%".ljust(6)
+        })
 
     # Calculate average metrics
     heuristic_avg_reward = np.mean(heuristic_metrics["total_rewards"])
     heuristic_avg_delay = np.mean(heuristic_metrics["total_delays"])
     heuristic_avg_on_time = np.mean(heuristic_metrics["on_time_rates"])
     heuristic_avg_postpone = np.mean(heuristic_metrics["postponement_rates"])
+    heuristic_avg_total_orders = np.mean(heuristic_metrics["total_orders"])
+    heuristic_avg_orders_delivered = np.mean(heuristic_metrics["orders_delivered"])
     
     rl_avg_reward = np.mean(rl_metrics["total_rewards"])
     rl_avg_delay = np.mean(rl_metrics["total_delays"])
     rl_avg_on_time = np.mean(rl_metrics["on_time_rates"])
     rl_avg_postpone = np.mean(rl_metrics["postponement_rates"])
+    rl_avg_total_orders = np.mean(rl_metrics["total_orders"])
+    rl_avg_orders_delivered = np.mean(rl_metrics["orders_delivered"])
+    
     logger.info("\nComparison Results:")
     logger.info(f"{'Metric':<25} {'Heuristic ACA':<20} {'RL-based ACA':<20} {'Improvement':<15}")
     logger.info(f"{'-'*70}")
@@ -773,6 +1494,8 @@ def compare_models(
     logger.info(f"{'Average Total Delay':<25} {heuristic_avg_delay:<20.2f} {rl_avg_delay:<20.2f} {((heuristic_avg_delay - rl_avg_delay) / heuristic_avg_delay) * 100:<15.2f}%")
     logger.info(f"{'Average On-Time Rate':<25} {heuristic_avg_on_time:<20.2f}% {rl_avg_on_time:<20.2f}% {(rl_avg_on_time - heuristic_avg_on_time):<15.2f}pp")
     logger.info(f"{'Postponement Rate':<25} {heuristic_avg_postpone:<20.2f}% {rl_avg_postpone:<20.2f}% {(rl_avg_postpone - heuristic_avg_postpone):<15.2f}pp")
+    logger.info(f"{'Avg Total Orders':<25} {heuristic_avg_total_orders:<20.2f} {rl_avg_total_orders:<20.2f} {(rl_avg_total_orders - heuristic_avg_total_orders):<15.2f}")
+    logger.info(f"{'Avg Orders Delivered':<25} {heuristic_avg_orders_delivered:<20.2f} {rl_avg_orders_delivered:<20.2f} {(rl_avg_orders_delivered - heuristic_avg_orders_delivered):<15.2f}")
     
     # Create comparison plots as line charts
     plt.figure(figsize=(15, 12))
@@ -882,7 +1605,6 @@ def compare_models(
         "rl": rl_metrics
     }
 
-
 def plot_losses(losses, save_path, window_size=20, phase_idx=None, episode_idx=None, total_steps=None):
     """
     Plot the training losses and overwrite the existing plot.
@@ -972,16 +1694,16 @@ def define_training_phases():
         {
             "name": "Simple Environment",
             "env_config": {
-                "num_vehicles": 10,  # Start with just 2 vehicles
-                "num_restaurants": 20,  # Limited restaurants
+                "num_vehicles": 1,  # 10
+                "num_restaurants": 2,  # 20
                 "service_area_dimensions": (6.0, 6.0),  # Small area
-                "mean_interarrival_time": 8,  # Low order density
+                "mean_interarrival_time": 80,  # 8
             },
             "performance_criteria": {
                 # No performance criteria - phase will run until max_episodes
             },
-            "min_episodes": 20, 
-            "max_episodes": 500    # More episodes for initial learning
+            "min_episodes": 500, 
+            "max_episodes": 500   # More episodes for initial learning
         }
         # ,
         
@@ -989,24 +1711,24 @@ def define_training_phases():
         # {
         #     "name": "Intermediate Environment",
         #     "env_config": {
-        #         "num_vehicles": 15,  # Increase to 5 vehicles
-        #         "num_restaurants": 15,  # More restaurants
+        #         "num_vehicles": 10,  # Increase to 5 vehicles
+        #         "num_restaurants": 20,  # More restaurants
         #         "service_area_dimensions": (6.0, 6.0),  # Larger area
-        #         "mean_interarrival_time": 1.5,  # Medium order density
+        #         "mean_interarrival_time": 8,  # Medium order density
         #     },
         #     "performance_criteria": {
         #         # No performance criteria - phase will run until max_episodes
         #     },
-        #     "min_episodes": 20,  # 30, 100
-        #     "max_episodes": 200   # Substantial training in intermediate complexity
-        # },
+        #     "min_episodes": 5000,  # 30, 100
+        #     "max_episodes": 5000   # Substantial training in intermediate complexity
+        # }#,
         
         # # Phase 3: Full Environment
         # {
         #     "name": "Full Environment",
         #     "env_config": {
-        #         "num_vehicles": 30,  # Full fleet
-        #         "num_restaurants": 30,  # All restaurants
+        #         "num_vehicles": 160,  # Full fleet
+        #         "num_restaurants": 320,  # All restaurants
         #         "service_area_dimensions": (6.0, 6.0),  # Complete service area
         #         "mean_interarrival_time": 0.65,  # High order density
         #     },
@@ -1014,7 +1736,7 @@ def define_training_phases():
         #         # No performance criteria - phase will run until max_episodes
         #     },
         #     "min_episodes": 20,  # 50, 300
-        #     "max_episodes": 200   # Extensive training in full complexity
+        #     "max_episodes": 100   # Extensive training in full complexity
         # }
     ]
     
@@ -1099,7 +1821,7 @@ if __name__ == "__main__":
         # Run phased training
         final_model_path = train_rl_aca(
             phases=phases,
-            save_interval=args.save_interval,
+            save_interval=100,
             stability_window=args.stability_window,
             stability_threshold=args.stability_threshold,
             seed=seed,
@@ -1112,15 +1834,15 @@ if __name__ == "__main__":
             exploration_start=args.initial_exploration,
             decay_method=args.decay_method,
             # Tuned RL hyperparameters
-            decay_rate=0.99,
-            rl_learning_rate=0.0004,
+            decay_rate=0.999,
+            rl_learning_rate=0.0001,
             rl_batch_size=32,
             rl_target_update_frequency=75,
             rl_discount_factor=0.9,
-            rl_exploration_decay=0.99,
+            rl_exploration_decay=0.999,
             exploration_end=0.05,
             rl_bundling_reward=0.0,
-            rl_postponement_penalty=-0.0,
+            rl_postponement_penalty=0.00, # -0.05
             rl_on_time_reward=0.0
         )
 
