@@ -1,0 +1,32 @@
+{
+  "timestamp": "20250517_193458",
+  "parameters": {
+    "solver": "fastest",
+    "seed": 42,
+    "num_episodes": 1,
+    "use_meituan_data": false,
+    "meituan_data_path": null,
+    "visualize": false,
+    "save_rl_model": false,
+    "rl_model_path": null,
+    "num_restaurants": 50,
+    "num_vehicles": 20,
+    "mean_prep_time": 10.0,
+    "delivery_window": 30,
+    "rl_learning_rate": 0.0005,
+    "rl_discount_factor": 0.95,
+    "rl_exploration_rate": 0.9,
+    "rl_exploration_decay": 0.99999,
+    "rl_min_exploration_rate": 0.2,
+    "rl_batch_size": 64,
+    "rl_target_update_frequency": 50,
+    "rl_replay_buffer_capacity": 10000
+  },
+  "equivalent": true,
+  "new_results": [
+    [
+      {
+        "total_orders": 501,
+        "orders_delivered": 448,
+        "total_delay": 0,
+        "late_orders": 

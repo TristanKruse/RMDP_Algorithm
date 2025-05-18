@@ -8,6 +8,7 @@ from .postponement import PostponementHandler
 from .rl_postponement import RLPostponementDecision
 from .time_utils import TimeCalculator
 import logging
+import os
 
 # Configure logging
 logging.basicConfig(
@@ -32,6 +33,7 @@ class ACA:
     The algorithm balances immediate service (quick delivery) with future flexibility
     (ability to handle upcoming orders efficiently).
     """
+
     def __init__(
         self,
         # Core algorithm parameters
@@ -46,7 +48,7 @@ class ACA:
         mean_prep_time: float = 10.0,
         delivery_window: float = 40.0,
         # RL parameters
-        postponement_method: str = "heuristic",  # "heuristic" or "rl"
+        postponement_method: str = "heuristic",  # "heuristic" or "rl-aca"
         rl_training_mode: bool = True,
         rl_state_size: int = 6,
         rl_model_path: str = None,
@@ -61,22 +63,22 @@ class ACA:
         rl_replay_buffer_capacity: int = 50000,
         rl_bundling_reward: float = 0.05,
         rl_postponement_penalty: float = -0.005,
-        rl_on_time_reward: float = 0.2
-        ):
+        rl_on_time_reward: float = 0.2,
+    ):
         self.buffer = buffer
         self.max_postponements = max_postponements
         self.max_postpone_time = max_postpone_time
         self.location_manager = location_manager  # Store it
         self.postponed_orders = {}  # order_id -> first_postpone_time
+        self.postponement_method = postponement_method  # Store the method name
 
-
-        # Initialize utility classes 
+        # Initialize utility classes
         self.route_utils = RouteUtils(vehicle_capacity)
         self.time_calculator = TimeCalculator(
             delivery_window=delivery_window,  # Or pass as parameter
             mean_prep_time=mean_prep_time,
             service_time=service_time,
-            location_manager=location_manager
+            location_manager=location_manager,
         )
 
         self.vehicle_ops = VehicleOperations(
@@ -94,7 +96,7 @@ class ACA:
                 max_postpone_time=max_postpone_time,
             )
             logger.info("Using heuristic-based postponement method")
-        else:  # "rl"
+        else:  # "rl-aca"
             self.postponement = RLPostponementDecision(
                 learning_rate=rl_learning_rate,
                 discount_factor=rl_discount_factor,
@@ -109,25 +111,31 @@ class ACA:
                 replay_buffer_capacity=rl_replay_buffer_capacity,
                 bundling_reward=rl_bundling_reward,
                 postponement_penalty=rl_postponement_penalty,
-                on_time_reward=rl_on_time_reward
+                on_time_reward=rl_on_time_reward,
             )
             # Load pre-trained model if path is provided
-            if rl_model_path and not rl_training_mode:
-                self.postponement.load_model(rl_model_path)
+            if rl_model_path:
+                try:
+                    self.load_rl_model(rl_model_path)
+                    logger.info(f"Successfully loaded RL model from {rl_model_path}")
+                except Exception as e:
+                    logger.error(f"Failed to load RL model from {rl_model_path}: {str(e)}")
+                    if not rl_training_mode:
+                        raise  # Re-raise the exception if we're in evaluation mode
             logger.info("Using RL-based postponement method")
-            
+
         # For storing metrics between steps
         self.previous_delay = 0.0
         self.reward_tracking = {}  # order_id -> reward
-    
+
     def solve(self, state_dict: dict, exploration_rate: float = None) -> Tuple[Dict[int, Route], Set[int]]:
         """ACA Algorithm to solve the RMDP.
-        
+
         This algorithm:
         1. Considers multiple possible sequences of order assignments
         2. Allows for strategic postponement of orders
         3. Uses time buffers to handle uncertainties in delivery times
-        
+
         Input parameters:
             state (S): Current system state
             time (t in state): Current time point
@@ -136,7 +144,7 @@ class ACA:
             buffer (b as class parameter): Time buffer for handling uncertainties
             max_postponements (pmax as class parameter): Maximum number of orders that can be postponed
             max_postpone_time (tpmax as class parameter): Maximum time an order can be postponed
-        
+
         The algorithm follows these steps:
         1-4. Initialization
             x ← ∅ // Best decision
@@ -148,7 +156,7 @@ class ACA:
             ̂Θ ← Θ // Create candidate route plan
             ̂P ← ∅ // Initialize set of postponements
             forall D ∈ ̂$ // Process all orders in sequence
-            
+
         Output:
             Tuple containing:
             - Route plan as dictionary mapping vehicle IDs to Routes
@@ -157,30 +165,30 @@ class ACA:
         # ----------------- RL Postponement -----------------
         # Calculate initial estimated delays for all orders
         # This updates the current_estimated_delay values for all orders
-        self.time_calculator._calculate_delay(
-            state=state_dict, 
-            route_plan=state_dict["route_plan"],
-            buffer=self.buffer
-        )
+        self.time_calculator._calculate_delay(state=state_dict, route_plan=state_dict["route_plan"], buffer=self.buffer)
         # ----------------- RL Postponement -----------------
 
         # Store total estimated delay before decision making
-        self.previous_delay = sum(order.current_estimated_delay for order in state_dict.get('orders', []) if hasattr(order, 'current_estimated_delay'))
-    
+        self.previous_delay = sum(
+            order.current_estimated_delay
+            for order in state_dict.get("orders", [])
+            if hasattr(order, "current_estimated_delay")
+        )
+
         # Count unassigned orders
-        num_unassigned = len(state_dict['unassigned_orders'])
+        num_unassigned = len(state_dict["unassigned_orders"])
         # logger.info(f"============================================")
         # logger.info(f"TIMESTEP {state_dict['time']}: Processing {num_unassigned} unassigned orders")
-        
+
         # Log vehicle statuses
         vehicles_with_orders = 0
         total_vehicles = len(state_dict["route_plan"])
         for vehicle_id, route in state_dict["route_plan"].items():
             if route.sequence:
                 vehicles_with_orders += 1
-        
+
         # logger.info(f"Vehicles with orders: {vehicles_with_orders}/{total_vehicles}")
-        
+
         # Initialize route plan by directly using the provided state
         route_plan = {}
         for vehicle_id, route in state_dict["route_plan"].items():
@@ -189,7 +197,7 @@ class ACA:
                 vehicle_id=vehicle_id,
                 sequence=route.sequence.copy(),  # Just copy the existing sequence
                 total_distance=0.0,
-                total_time=0.0
+                total_time=0.0,
             )
 
         # print(f"Starting solve with {len(state_dict['unassigned_orders'])} unassigned orders")
@@ -198,13 +206,13 @@ class ACA:
         # Handle empty state or no unassigned orders (Step 1: Initialization)
         if not state_dict["unassigned_orders"]:
             return route_plan, set()
-        
+
         # Initialize tracking variables (Steps 1-4: Initialization)
         best_decision = {k: v.copy() for k, v in route_plan.items()}  # 1. x ← ∅
         best_delay = float("inf")  # 2. delay ← bigM
         best_slack = 0  # 3. slack ← 0
         best_postponed = set()  # Initialize empty set for postponed orders
-        
+
         # Step 5-7: Generate order sequences
         # 6. forall̂$ ordered set of $o // All potential sequences
         if isinstance(state_dict["unassigned_orders"], dict):
@@ -220,10 +228,10 @@ class ACA:
         # Track assignments for debugging
         assignments_made = 0
         assignments_failed = 0
-        
+
         # Store current total delay for reward calculation
         current_delay = self.time_calculator._calculate_delay(state_dict, route_plan, buffer=self.buffer)
-        
+
         # Determine if we're using RL-based postponement by checking the type
         is_rl_postponement = isinstance(self.postponement, RLPostponementDecision)
 
@@ -239,10 +247,9 @@ class ACA:
                     order_id=order_id,
                     current_time=state_dict["time"],
                     state=state_dict,
-                    exploration_rate=exploration_rate
+                    exploration_rate=exploration_rate,
                 )
                 rl_postponement_decisions[order_id] = should_postpone
-
 
         # Steps 8-10: Process each sequence
         for sequence in order_sequences:
@@ -252,7 +259,7 @@ class ACA:
 
             # Log sequence being processed
             # logger.info(f"Processing sequence with {len(sequence)} orders")
-        
+
             # 10. Process each order in sequence (forall D ∈ ̂$)
             for order_id, order_info in sequence:
 
@@ -277,12 +284,12 @@ class ACA:
 
                 # Log before assignment attempt
                 # logger.info(f"Attempting to assign order {order_id}")
-                    
+
                 # 12. Find best vehicle assignment
                 assignment = self.vehicle_ops.find_vehicle(
                     candidate_route, order_id, buffer=self.buffer, state=state_dict
                 )
-                
+
                 if assignment is None:
                     # If no vehicle available, just continue (don't postpone)
                     # logging.info(f"FAILED TO  to assign order {order_id}")
@@ -290,13 +297,13 @@ class ACA:
                 # Log successful assignment
                 # logger.info(f"Assigned order {order_id} to vehicle {assignment.vehicle_id}")
                 assignments_made += 1
-                
+
                 # 13. Update route for assigned vehicle
                 candidate_route[assignment.vehicle_id] = Route(
                     vehicle_id=assignment.vehicle_id,
                     sequence=assignment.tentative_route,
                     total_distance=0.0,
-                    total_time=0.0
+                    total_time=0.0,
                 )
 
             # Evaluate solution, with buffer included
@@ -323,44 +330,54 @@ class ACA:
                 # Remove postponed orders from pickups and deliveries
                 new_pickups = pickups - best_postponed
                 new_deliveries = deliveries - best_postponed
-                
+
                 # Only keep stops that still have orders
                 if new_pickups or new_deliveries:
                     new_sequence.append((node_id, new_pickups, new_deliveries))
-            
+
             final_routes[vehicle_id] = Route(
                 vehicle_id=vehicle_id,
                 sequence=new_sequence,
                 total_distance=route.total_distance,
-                total_time=route.total_time
+                total_time=route.total_time,
             )
 
         # ----------------- RL Postponement -----------------
         # Calculate final estimated delay for all orders based on the final route plan
         # This updates the current_estimated_delay values for orders
-        self.time_calculator._calculate_delay(
-            state=state_dict,
-            route_plan=final_routes,
-            buffer=self.buffer
-        )
-        
+        self.time_calculator._calculate_delay(state=state_dict, route_plan=final_routes, buffer=self.buffer)
+
         # Store total estimated delay after decision making
-        self.current_delay = sum(order.current_estimated_delay for order in state_dict.get('orders', []) if hasattr(order, 'current_estimated_delay'))
+        self.current_delay = sum(
+            order.current_estimated_delay
+            for order in state_dict.get("orders", [])
+            if hasattr(order, "current_estimated_delay")
+        )
         # ----------------- RL Postponement -----------------
 
         return final_routes, best_postponed
 
     def save_rl_model(self, path: str) -> None:
         """Save the RL model to the specified path."""
-        if hasattr(self, 'postponement') and hasattr(self.postponement, 'save_model'):
+        if hasattr(self, "postponement") and hasattr(self.postponement, "save_model"):
             self.postponement.save_model(path)
             return True
         return False
-    
+
     def load_rl_model(self, path: str) -> None:
         """Load the RL model from the specified path."""
-        if hasattr(self, 'postponement') and hasattr(self.postponement, 'load_model'):
+        if not os.path.exists(path):
+            raise FileNotFoundError(f"RL model file not found: {path}")
+
+        if not hasattr(self, "postponement") or not hasattr(self.postponement, "load_model"):
+            raise AttributeError("Postponement handler does not support model loading")
+
+        if self.postponement_method != "rl-aca":
+            raise ValueError(f"Cannot load RL model for non-RL postponement method: {self.postponement_method}")
+
+        try:
             self.postponement.load_model(path)
             logger.info(f"RL model loaded from {path}")
-            return True
-        return False
+        except Exception as e:
+            logger.error(f"Error loading RL model: {str(e)}")
+            raise

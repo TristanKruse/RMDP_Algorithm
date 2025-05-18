@@ -1,0 +1,9 @@
+{
+  "timestamp": "20250517_191141",
+  "solver_name": "fastest",
+  "seed": null,
+  "episode_stats": {
+    "total_orders": 498,
+    "orders_delivered": 447,
+    "total_delay": 0,
+    "late_orders": 

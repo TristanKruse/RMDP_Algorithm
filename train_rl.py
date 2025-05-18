@@ -6,7 +6,7 @@ import numpy as np
 from datetime import datetime
 from tqdm import tqdm
 from typing import Dict, List, Tuple
-from train import run_test_episode
+from training.train import run_test_episode
 import json
 import shutil
 
@@ -53,24 +53,24 @@ logger = logging.getLogger(__name__)
 #     """
 #     # Create model directory if it doesn't exist
 #     os.makedirs(model_dir, exist_ok=True)
-    
+
 #     # Generate timestamp for this training run
 #     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    
+
 #     # Create directory for phase-specific data
 #     phase_dir = os.path.join(model_dir, f"phased_training_{timestamp}")
 #     os.makedirs(phase_dir, exist_ok=True)
-    
+
 #     # Use a single latest model path that will be updated throughout training
 #     latest_model_path = os.path.join(phase_dir, "rl_aca_latest.pt")
-    
+
 #     # Set initial model path if resuming
 #     current_model_path = resume_from_model if resume_from_model else latest_model_path
-    
+
 #     # Save phase configurations for reference
 #     with open(os.path.join(phase_dir, "phase_configs.json"), "w") as f:
 #         json.dump(phases, f, indent=4)
-    
+
 #     # Initialize overall metrics
 #     all_metrics = {
 #         "phase_transitions": [],
@@ -83,10 +83,10 @@ logger = logging.getLogger(__name__)
 
 #     # Initialize exploration rate at the start
 #     current_exploration_rate = exploration_start
-    
+
 #     # Calculate total episodes across all phases
 #     max_total_episodes = sum(phase.get("max_episodes", 100) for phase in phases)
-    
+
 #     # If resuming, attempt to load metrics from previous runs
 #     if resume_from_model:
 #         resume_dir = os.path.dirname(resume_from_model)
@@ -102,7 +102,7 @@ logger = logging.getLogger(__name__)
 #                 "losses": saved_metrics.get("losses", []).tolist()
 #             }
 #             logger.info(f"Resuming training from phase {start_phase}, episode {start_episode}")
-    
+
 #     # Training loop through phases
 #     current_phase_idx = start_phase
 #     total_completed_episodes = 0  # For exploration rate
@@ -110,11 +110,11 @@ logger = logging.getLogger(__name__)
 #     while current_phase_idx < len(phases):
 #         current_phase = phases[current_phase_idx]
 #         phase_name = current_phase.get("name", f"Phase {current_phase_idx + 1}")
-        
+
 #         logger.info(f"\n{'=' * 80}\nStarting phase {current_phase_idx + 1}/{len(phases)}: {phase_name}")
 #         logger.info(f"Environment: {current_phase['env_config']}")
 #         logger.info(f"Performance criteria: {current_phase['performance_criteria']}\n{'=' * 80}")
-        
+
 #         # Initialize phase-specific metrics
 #         phase_metrics = {
 #             "rewards": [],
@@ -122,26 +122,26 @@ logger = logging.getLogger(__name__)
 #             "on_time_rates": [],
 #             "postponement_rates": []
 #         }
-        
+
 #         # Process episodes for the current phase
 #         episode_in_phase = start_episode if current_phase_idx == start_phase else 0
 #         phase_complete = False
 #         min_episodes = current_phase.get("min_episodes", 20)
 #         max_episodes = current_phase.get("max_episodes", 100)
-        
+
 #         # Create progress bar for this phase
 #         total_possible = max_episodes - episode_in_phase
 #         with tqdm(total=total_possible, desc=f"Phase {current_phase_idx + 1}/{len(phases)}: {phase_name}") as pbar:
 #             while not phase_complete:
 #                 # Pass phase-specific environment parameters
 #                 env_config = current_phase["env_config"]
-                
+
 #                 # Log current model status
 #                 if episode_in_phase == 0:
 #                     logger.info(f"Starting phase with model: {current_model_path}")
 #                 else:
 #                     logger.info(f"Using model: {latest_model_path}")
-      
+
 #                 # Update exploration rate based on selected decay method (continuous across phases)
 #                 if decay_method == "linear":
 #                     progress = total_completed_episodes / max_total_episodes
@@ -182,29 +182,29 @@ logger = logging.getLogger(__name__)
 #                     rl_postponement_penalty=rl_postponement_penalty,
 #                     rl_on_time_reward=rl_on_time_reward
 #                 )
-                
+
 #                 # Update metrics
 #                 reward = stats["total_reward"]
 #                 delay = sum(stats["delay_values"]) if stats["delay_values"] else 0
-                
+
 #                 total_orders = max(1, stats["orders_delivered"])
 #                 late_orders = len(stats["late_orders"])
 #                 on_time_rate = ((total_orders - late_orders) / total_orders) * 100
-                
+
 #                 postponement_rate = len(stats["postponed_orders"]) / max(1, stats["total_orders"]) * 100
-                
+
 #                 # Update phase metrics
 #                 phase_metrics["rewards"].append(reward)
 #                 phase_metrics["delays"].append(delay)
 #                 phase_metrics["on_time_rates"].append(on_time_rate)
 #                 phase_metrics["postponement_rates"].append(postponement_rate)
-                
+
 #                 # Update overall metrics
 #                 all_metrics["rewards"].append(reward)
 #                 all_metrics["delays"].append(delay)
 #                 all_metrics["on_time_rates"].append(on_time_rate)
 #                 all_metrics["postponement_rates"].append(postponement_rate)
-                
+
 
 #                 # Extract losses from the solver and append to all_metrics["losses"]
 #                 try:
@@ -229,10 +229,9 @@ logger = logging.getLogger(__name__)
 #                     logger.info(f"Updated loss plot at {loss_plot_path}")
 
 
-
-#                 # Update progress bar with key metrics             
+#                 # Update progress bar with key metrics
 #                 pbar.set_postfix({
-#                     'reward': f"{reward:.2f}".ljust(10), 
+#                     'reward': f"{reward:.2f}".ljust(10),
 #                     'on-time': f"{on_time_rate:.1f}%".ljust(10),
 #                     'delay': f"{delay:.1f}".ljust(8),
 #                     #'seed': f"{seed + episode_in_phase}",
@@ -241,23 +240,23 @@ logger = logging.getLogger(__name__)
 #                     'postponed': f"{postponement_rate:.1f}%".ljust(8)
 #                 })
 #                 pbar.update(1)
-                
+
 #                 # Save checkpoints at regular intervals
 #                 if (episode_in_phase + 1) % save_interval == 0:
 #                     # Create checkpoint name
 #                     checkpoint_path = os.path.join(phase_dir, f"rl_aca_phase{current_phase_idx+1}_ep{episode_in_phase+1}.pt")
-                    
+
 #                     # Create resuming info
 #                     resume_info = {
 #                         "phase": current_phase_idx,
 #                         "episode": episode_in_phase + 1,
 #                         "timestamp": timestamp,
 #                     }
-                    
+
 #                     # Save resuming info
 #                     with open(os.path.join(phase_dir, "resuming_info.json"), "w") as f:
 #                         json.dump(resume_info, f)
-                    
+
 #                     # Copy latest model to checkpoint
 #                     if os.path.exists(latest_model_path):
 #                         try:
@@ -267,18 +266,18 @@ logger = logging.getLogger(__name__)
 #                             logger.error(f"Failed to save checkpoint: {e}")
 #                     else:
 #                         logger.warning(f"Could not save checkpoint: Model file {latest_model_path} does not exist")
-                    
+
 #                     # Save metrics
 #                     metrics_file = os.path.join(phase_dir, f"phased_metrics_{timestamp}.npz")
 #                     np.savez(
-#                         metrics_file, 
+#                         metrics_file,
 #                         phase_transitions=np.array(all_metrics["phase_transitions"]),
 #                         rewards=np.array(all_metrics["rewards"]),
 #                         delays=np.array(all_metrics["delays"]),
 #                         on_time_rates=np.array(all_metrics["on_time_rates"]),
 #                         postponement_rates=np.array(all_metrics["postponement_rates"])
 #                     )
-                
+
 #                 # Check if phase completion criteria are met
 #                 criteria_met, reason = check_phase_criteria(
 #                     phase_metrics=phase_metrics,
@@ -289,14 +288,14 @@ logger = logging.getLogger(__name__)
 #                     stability_threshold=stability_threshold,
 #                     performance_criteria=current_phase["performance_criteria"]
 #                 )
-                
+
 #                 # Check if phase is complete
 #                 if criteria_met or episode_in_phase >= max_episodes:
 #                     phase_complete = True
-                    
+
 #                     # Save phase transition point
 #                     all_metrics["phase_transitions"].append(len(all_metrics["rewards"]) - 1)
-                    
+
 #                     # Save phase final model
 #                     phase_final_path = os.path.join(phase_dir, f"rl_aca_phase{current_phase_idx+1}_final.pt")
 #                     if os.path.exists(latest_model_path):
@@ -307,15 +306,15 @@ logger = logging.getLogger(__name__)
 #                             logger.error(f"Failed to create final model: {e}")
 #                     else:
 #                         logger.warning(f"Cannot create final model - source file {latest_model_path} not found")
-                    
+
 #                     # Plot phase results
 #                     plot_phase_results(phase_metrics, current_phase_idx, phase_name, phase_dir, timestamp)
-                    
+
 #                     # Log completion message
 #                     if criteria_met:
 #                         logger.info(f"Phase {current_phase_idx + 1} completed after {episode_in_phase + 1} episodes")
 #                         logger.info(f"Reason: {reason}")
-                
+
 #                 # Increment episode counter
 #                 episode_in_phase += 1
 #                 total_completed_episodes += 1  # Increment total completed episodes
@@ -323,17 +322,15 @@ logger = logging.getLogger(__name__)
 #         # Move to next phase
 #         current_phase_idx += 1
 #         start_episode = 0  # Reset episode counter for next phase
-    
+
 #     # Training complete - plot overall results
 #     plot_training_results(all_metrics, phases, phase_dir, timestamp)
-    
+
 #     # Get path to final model
 #     final_model_path = os.path.join(phase_dir, f"rl_aca_phase{len(phases)}_final.pt")
-    
+
 #     logger.info(f"Phased training completed. Final model saved to {final_model_path}")
 #     return final_model_path
-
-
 
 
 # def train_rl_aca(
@@ -370,24 +367,24 @@ logger = logging.getLogger(__name__)
 #     """
 #     # Create model directory if it doesn't exist
 #     os.makedirs(model_dir, exist_ok=True)
-    
+
 #     # Generate timestamp for this training run
 #     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    
+
 #     # Create directory for phase-specific data
 #     phase_dir = os.path.join(model_dir, f"phased_training_{timestamp}")
 #     os.makedirs(phase_dir, exist_ok=True)
-    
+
 #     # Use a single latest model path that will be updated throughout training
 #     latest_model_path = os.path.join(phase_dir, "rl_aca_latest.pt")
-    
+
 #     # Set initial model path if resuming
 #     current_model_path = resume_from_model if resume_from_model else latest_model_path
-    
+
 #     # Save phase configurations for reference
 #     with open(os.path.join(phase_dir, "phase_configs.json"), "w") as f:
 #         json.dump(phases, f, indent=4)
-    
+
 #     # Initialize overall metrics
 #     all_metrics = {
 #         "phase_transitions": [],
@@ -400,10 +397,10 @@ logger = logging.getLogger(__name__)
 
 #     # Initialize exploration rate at the start
 #     current_exploration_rate = exploration_start
-    
+
 #     # Calculate total episodes across all phases
 #     max_total_episodes = sum(phase.get("max_episodes", 100) for phase in phases)
-    
+
 #     # If resuming, attempt to load metrics from previous runs
 #     if resume_from_model:
 #         resume_dir = os.path.dirname(resume_from_model)
@@ -419,7 +416,7 @@ logger = logging.getLogger(__name__)
 #                 "losses": saved_metrics.get("losses", []).tolist()
 #             }
 #             logger.info(f"Resuming training from phase {start_phase}, episode {start_episode}")
-    
+
 #     # Create the solver once before the episode loop to persist the replay buffer
 #     from train import SOLVERS, RestaurantMealDeliveryEnv, get_env_config  # Ensure necessary imports
 #     speed = 16  # From run_test_episode
@@ -442,11 +439,11 @@ logger = logging.getLogger(__name__)
 #     while current_phase_idx < len(phases):
 #         current_phase = phases[current_phase_idx]
 #         phase_name = current_phase.get("name", f"Phase {current_phase_idx + 1}")
-        
+
 #         logger.info(f"\n{'=' * 80}\nStarting phase {current_phase_idx + 1}/{len(phases)}: {phase_name}")
 #         logger.info(f"Environment: {current_phase['env_config']}")
 #         logger.info(f"Performance criteria: {current_phase['performance_criteria']}\n{'=' * 80}")
-        
+
 #         # Initialize phase-specific metrics
 #         phase_metrics = {
 #             "rewards": [],
@@ -454,26 +451,26 @@ logger = logging.getLogger(__name__)
 #             "on_time_rates": [],
 #             "postponement_rates": []
 #         }
-        
+
 #         # Process episodes for the current phase
 #         episode_in_phase = start_episode if current_phase_idx == start_phase else 0
 #         phase_complete = False
 #         min_episodes = current_phase.get("min_episodes", 20)
 #         max_episodes = current_phase.get("max_episodes", 100)
-        
+
 #         # Create progress bar for this phase
 #         total_possible = max_episodes - episode_in_phase
 #         with tqdm(total=total_possible, desc=f"Phase {current_phase_idx + 1}/{len(phases)}: {phase_name}") as pbar:
 #             while not phase_complete:
 #                 # Pass phase-specific environment parameters
 #                 env_config = current_phase["env_config"]
-                
+
 #                 # Log current model status
 #                 if episode_in_phase == 0:
 #                     logger.info(f"Starting phase with model: {current_model_path}")
 #                 else:
 #                     logger.info(f"Using model: {latest_model_path}")
-      
+
 #                 # Update exploration rate based on selected decay method (continuous across phases)
 #                 if decay_method == "linear":
 #                     progress = total_completed_episodes / max_total_episodes
@@ -514,29 +511,29 @@ logger = logging.getLogger(__name__)
 #                     rl_postponement_penalty=rl_postponement_penalty,
 #                     rl_on_time_reward=rl_on_time_reward
 #                 )
-                
+
 #                 # Update metrics
 #                 reward = stats["total_reward"]
 #                 delay = sum(stats["delay_values"]) if stats["delay_values"] else 0
-                
+
 #                 total_orders = max(1, stats["orders_delivered"])
 #                 late_orders = len(stats["late_orders"])
 #                 on_time_rate = ((total_orders - late_orders) / total_orders) * 100
-                
+
 #                 postponement_rate = len(stats["postponed_orders"]) / max(1, stats["total_orders"]) * 100
-                
+
 #                 # Update phase metrics
 #                 phase_metrics["rewards"].append(reward)
 #                 phase_metrics["delays"].append(delay)
 #                 phase_metrics["on_time_rates"].append(on_time_rate)
 #                 phase_metrics["postponement_rates"].append(postponement_rate)
-                
+
 #                 # Update overall metrics
 #                 all_metrics["rewards"].append(reward)
 #                 all_metrics["delays"].append(delay)
 #                 all_metrics["on_time_rates"].append(on_time_rate)
 #                 all_metrics["postponement_rates"].append(postponement_rate)
-                
+
 #                 # Extract losses from the solver and append to all_metrics["losses"]
 #                 try:
 #                     # Use the existing solver instance instead of creating a new one
@@ -558,9 +555,9 @@ logger = logging.getLogger(__name__)
 #                     )
 #                     logger.info(f"Updated loss plot at {loss_plot_path}")
 
-#                 # Update progress bar with key metrics             
+#                 # Update progress bar with key metrics
 #                 pbar.set_postfix({
-#                     'reward': f"{reward:.2f}".ljust(10), 
+#                     'reward': f"{reward:.2f}".ljust(10),
 #                     'on-time': f"{on_time_rate:.1f}%".ljust(10),
 #                     'delay': f"{delay:.1f}".ljust(8),
 #                     #'seed': f"{seed + episode_in_phase}",
@@ -569,23 +566,23 @@ logger = logging.getLogger(__name__)
 #                     'postponed': f"{postponement_rate:.1f}%".ljust(8)
 #                 })
 #                 pbar.update(1)
-                
+
 #                 # Save checkpoints at regular intervals
 #                 if (episode_in_phase + 1) % save_interval == 0:
 #                     # Create checkpoint name
 #                     checkpoint_path = os.path.join(phase_dir, f"rl_aca_phase{current_phase_idx+1}_ep{episode_in_phase+1}.pt")
-                    
+
 #                     # Create resuming info
 #                     resume_info = {
 #                         "phase": current_phase_idx,
 #                         "episode": episode_in_phase + 1,
 #                         "timestamp": timestamp,
 #                     }
-                    
+
 #                     # Save resuming info
 #                     with open(os.path.join(phase_dir, "resuming_info.json"), "w") as f:
 #                         json.dump(resume_info, f)
-                    
+
 #                     # Copy latest model to checkpoint
 #                     if os.path.exists(latest_model_path):
 #                         try:
@@ -595,18 +592,18 @@ logger = logging.getLogger(__name__)
 #                             logger.error(f"Failed to save checkpoint: {e}")
 #                     else:
 #                         logger.warning(f"Could not save checkpoint: Model file {latest_model_path} does not exist")
-                    
+
 #                     # Save metrics
 #                     metrics_file = os.path.join(phase_dir, f"phased_metrics_{timestamp}.npz")
 #                     np.savez(
-#                         metrics_file, 
+#                         metrics_file,
 #                         phase_transitions=np.array(all_metrics["phase_transitions"]),
 #                         rewards=np.array(all_metrics["rewards"]),
 #                         delays=np.array(all_metrics["delays"]),
 #                         on_time_rates=np.array(all_metrics["on_time_rates"]),
 #                         postponement_rates=np.array(all_metrics["postponement_rates"])
 #                     )
-                
+
 #                 # Check if phase completion criteria are met
 #                 criteria_met, reason = check_phase_criteria(
 #                     phase_metrics=phase_metrics,
@@ -617,14 +614,14 @@ logger = logging.getLogger(__name__)
 #                     stability_threshold=stability_threshold,
 #                     performance_criteria=current_phase["performance_criteria"]
 #                 )
-                
+
 #                 # Check if phase is complete
 #                 if criteria_met or episode_in_phase >= max_episodes:
 #                     phase_complete = True
-                    
+
 #                     # Save phase transition point
 #                     all_metrics["phase_transitions"].append(len(all_metrics["rewards"]) - 1)
-                    
+
 #                     # Save phase final model
 #                     phase_final_path = os.path.join(phase_dir, f"rl_aca_phase{current_phase_idx+1}_final.pt")
 #                     if os.path.exists(latest_model_path):
@@ -635,15 +632,15 @@ logger = logging.getLogger(__name__)
 #                             logger.error(f"Failed to create final model: {e}")
 #                     else:
 #                         logger.warning(f"Cannot create final model - source file {latest_model_path} not found")
-                    
+
 #                     # Plot phase results
 #                     plot_phase_results(phase_metrics, current_phase_idx, phase_name, phase_dir, timestamp)
-                    
+
 #                     # Log completion message
 #                     if criteria_met:
 #                         logger.info(f"Phase {current_phase_idx + 1} completed after {episode_in_phase + 1} episodes")
 #                         logger.info(f"Reason: {reason}")
-                
+
 #                 # Increment episode counter
 #                 episode_in_phase += 1
 #                 total_completed_episodes += 1  # Increment total completed episodes
@@ -651,35 +648,33 @@ logger = logging.getLogger(__name__)
 #         # Move to next phase
 #         current_phase_idx += 1
 #         start_episode = 0  # Reset episode counter for next phase
-    
+
 #     # Training complete - plot overall results
 #     plot_training_results(all_metrics, phases, phase_dir, timestamp)
-    
+
 #     # Get path to final model
 #     final_model_path = os.path.join(phase_dir, f"rl_aca_phase{len(phases)}_final.pt")
-    
+
 #     logger.info(f"Phased training completed. Final model saved to {final_model_path}")
 #     return final_model_path
-
-
 
 
 def train_rl_aca(
     phases: List[Dict],
     save_interval: int = 100,
-    stability_window: int = 10,       # Window for stability assessment
-    stability_threshold: float = 3.0, # Max percent change considered stable
+    stability_window: int = 10,  # Window for stability assessment
+    stability_threshold: float = 3.0,  # Max percent change considered stable
     seed: int = 1,
     visualize: bool = False,
     reposition_idle_vehicles: bool = False,
     model_dir: str = "data/models",
-    resume_from_model: str = None,    # Support resuming
-    start_phase: int = 0,             # Phase to start from when resuming
-    start_episode: int = 0,           # Episode to start from when resuming
-    exploration_start: float = 0.9,   # Initial exploration rate
-    exploration_end: float = 0.05,    # Final exploration rate
-    decay_method: str = "exponential",# "linear" or "exponential"
-    decay_rate: float = 0.999,        # For exponential decay
+    resume_from_model: str = None,  # Support resuming
+    start_phase: int = 0,  # Phase to start from when resuming
+    start_episode: int = 0,  # Episode to start from when resuming
+    exploration_start: float = 0.9,  # Initial exploration rate
+    exploration_end: float = 0.05,  # Final exploration rate
+    decay_method: str = "exponential",  # "linear" or "exponential"
+    decay_rate: float = 0.999,  # For exponential decay
     # RL hyperparameters
     rl_learning_rate: float = 0.0005,
     rl_discount_factor: float = 0.95,
@@ -691,31 +686,31 @@ def train_rl_aca(
     rl_replay_buffer_capacity: int = 10000,
     rl_bundling_reward: float = 0.05,
     rl_postponement_penalty: float = -0.005,
-    rl_on_time_reward: float = 0.2
-    ):
+    rl_on_time_reward: float = 0.2,
+):
     """
     Train the RL-based ACA solver through multiple progressive phases.
     """
     # Create model directory if it doesn't exist
     os.makedirs(model_dir, exist_ok=True)
-    
+
     # Generate timestamp for this training run
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    
+
     # Create directory for phase-specific data
     phase_dir = os.path.join(model_dir, f"phased_training_{timestamp}")
     os.makedirs(phase_dir, exist_ok=True)
-    
+
     # Use a single latest model path that will be updated throughout training
     latest_model_path = os.path.join(phase_dir, "rl_aca_latest.pt")
-    
+
     # Set initial model path if resuming
     current_model_path = resume_from_model if resume_from_model else latest_model_path
-    
+
     # Save phase configurations for reference
     with open(os.path.join(phase_dir, "phase_configs.json"), "w") as f:
         json.dump(phases, f, indent=4)
-    
+
     # Initialize overall metrics
     all_metrics = {
         "phase_transitions": [],
@@ -723,15 +718,15 @@ def train_rl_aca(
         "delays": [],
         "on_time_rates": [],
         "postponement_rates": [],
-        "losses": []  # Add a list to track average loss per episode
+        "losses": [],  # Add a list to track average loss per episode
     }
 
     # Initialize exploration rate at the start
     current_exploration_rate = exploration_start
-    
+
     # Calculate total episodes across all phases
     max_total_episodes = sum(phase.get("max_episodes", 100) for phase in phases)
-    
+
     # If resuming, attempt to load metrics from previous runs
     if resume_from_model:
         resume_dir = os.path.dirname(resume_from_model)
@@ -744,12 +739,13 @@ def train_rl_aca(
                 "delays": saved_metrics["delays"].tolist(),
                 "on_time_rates": saved_metrics["on_time_rates"].tolist(),
                 "postponement_rates": saved_metrics["postponement_rates"].tolist(),
-                "losses": saved_metrics.get("losses", []).tolist()
+                "losses": saved_metrics.get("losses", []).tolist(),
             }
             logger.info(f"Resuming training from phase {start_phase}, episode {start_episode}")
-    
+
     # Create the solver once before the episode loop to persist the replay buffer
-    from train import SOLVERS, RestaurantMealDeliveryEnv, get_env_config  # Ensure necessary imports
+    from old.train_old2 import SOLVERS, RestaurantMealDeliveryEnv, get_env_config  # Ensure necessary imports
+
     speed = 16  # From run_test_episode
     street_network_factor = 1.0
     movement_per_step = (speed / 60) / street_network_factor
@@ -770,52 +766,43 @@ def train_rl_aca(
     while current_phase_idx < len(phases):
         current_phase = phases[current_phase_idx]
         phase_name = current_phase.get("name", f"Phase {current_phase_idx + 1}")
-        
+
         logger.info(f"\n{'=' * 80}\nStarting phase {current_phase_idx + 1}/{len(phases)}: {phase_name}")
         logger.info(f"Environment: {current_phase['env_config']}")
         logger.info(f"Performance criteria: {current_phase['performance_criteria']}\n{'=' * 80}")
-        
+
         # Initialize phase-specific metrics
-        phase_metrics = {
-            "rewards": [],
-            "delays": [],
-            "on_time_rates": [],
-            "postponement_rates": []
-        }
-        
+        phase_metrics = {"rewards": [], "delays": [], "on_time_rates": [], "postponement_rates": []}
+
         # Process episodes for the current phase
         episode_in_phase = start_episode if current_phase_idx == start_phase else 0
         phase_complete = False
         min_episodes = current_phase.get("min_episodes", 20)
         max_episodes = current_phase.get("max_episodes", 100)
-        
+
         # Create progress bar for this phase
         total_possible = max_episodes - episode_in_phase
         with tqdm(total=total_possible, desc=f"Phase {current_phase_idx + 1}/{len(phases)}: {phase_name}") as pbar:
             while not phase_complete:
                 # Pass phase-specific environment parameters
                 env_config = current_phase["env_config"]
-                
+
                 # Log current model status
                 if episode_in_phase == 0:
                     logger.info(f"Starting phase with model: {current_model_path}")
                 else:
                     logger.info(f"Using model: {latest_model_path}")
-      
+
                 # Update exploration rate based on selected decay method (continuous across phases)
                 if decay_method == "linear":
                     progress = total_completed_episodes / max_total_episodes
                     current_exploration_rate = max(
-                        exploration_end,
-                        exploration_start - (exploration_start - exploration_end) * progress
+                        exploration_end, exploration_start - (exploration_start - exploration_end) * progress
                     )
                 elif decay_method == "exponential":
                     # If this is not the first episode, apply exponential decay
                     if current_phase_idx > 0 or episode_in_phase > 0:
-                        current_exploration_rate = max(
-                            exploration_end,
-                            current_exploration_rate * decay_rate
-                        )
+                        current_exploration_rate = max(exploration_end, current_exploration_rate * decay_rate)
 
                 # Run test episode - always save to the same latest model path, using the same solver
                 stats = run_test_episode(
@@ -841,31 +828,31 @@ def train_rl_aca(
                     rl_replay_buffer_capacity=rl_replay_buffer_capacity,
                     rl_bundling_reward=rl_bundling_reward,
                     rl_postponement_penalty=rl_postponement_penalty,
-                    rl_on_time_reward=rl_on_time_reward
+                    rl_on_time_reward=rl_on_time_reward,
                 )
-                
+
                 # Update metrics
                 reward = stats["total_reward"]
                 delay = sum(stats["delay_values"]) if stats["delay_values"] else 0
-                
+
                 total_orders = max(1, stats["orders_delivered"])
                 late_orders = len(stats["late_orders"])
                 on_time_rate = ((total_orders - late_orders) / total_orders) * 100
-                
+
                 postponement_rate = len(stats["postponed_orders"]) / max(1, stats["total_orders"]) * 100
-                
+
                 # Update phase metrics
                 phase_metrics["rewards"].append(reward)
                 phase_metrics["delays"].append(delay)
                 phase_metrics["on_time_rates"].append(on_time_rate)
                 phase_metrics["postponement_rates"].append(postponement_rate)
-                
+
                 # Update overall metrics
                 all_metrics["rewards"].append(reward)
                 all_metrics["delays"].append(delay)
                 all_metrics["on_time_rates"].append(on_time_rate)
                 all_metrics["postponement_rates"].append(postponement_rate)
-                
+
                 # Extract the average loss for this episode and append to all_metrics["losses"]
                 try:
                     # Use the existing solver instance instead of creating a new one
@@ -892,39 +879,47 @@ def train_rl_aca(
                         window_size=20,
                         phase_idx=current_phase_idx + 1,
                         episode_idx=episode_in_phase + 1,
-                        total_steps=len(all_metrics["losses"])  # Now represents the number of episodes
+                        total_steps=len(all_metrics["losses"]),  # Now represents the number of episodes
                     )
                     logger.info(f"Updated loss plot at {loss_plot_path}")
 
-                pbar.set_postfix({
-                    'rew': f"{reward:.1f}".ljust(7),          # Shortened to 'rew', reduced precision and padding
-                    'ot': f"{on_time_rate:.0f}%".ljust(5),    # Shortened to 'ot', removed decimal, reduced padding
-                    'del': f"{delay:.0f}".ljust(5),           # Shortened to 'del', removed decimal, reduced padding
-                    'sd': f"{seed}".ljust(4),                 # Shortened to 'sd', reduced padding
-                    'exp': f"{current_exploration_rate:.2f}".ljust(6),  # Shortened to 'exp', reduced precision and padding
-                    'post': f"{postponement_rate:.0f}%".ljust(6),      # Shortened to 'post', removed decimal, reduced padding
-                    'tot': f"{stats['total_orders']}".ljust(4),       # Shortened to 'tot', reduced padding
-                    'deliv': f"{stats['orders_delivered']}".ljust(5)  # Shortened to 'deliv', reduced padding
-                })
+                pbar.set_postfix(
+                    {
+                        "rew": f"{reward:.1f}".ljust(7),  # Shortened to 'rew', reduced precision and padding
+                        "ot": f"{on_time_rate:.0f}%".ljust(5),  # Shortened to 'ot', removed decimal, reduced padding
+                        "del": f"{delay:.0f}".ljust(5),  # Shortened to 'del', removed decimal, reduced padding
+                        "sd": f"{seed}".ljust(4),  # Shortened to 'sd', reduced padding
+                        "exp": f"{current_exploration_rate:.2f}".ljust(
+                            6
+                        ),  # Shortened to 'exp', reduced precision and padding
+                        "post": f"{postponement_rate:.0f}%".ljust(
+                            6
+                        ),  # Shortened to 'post', removed decimal, reduced padding
+                        "tot": f"{stats['total_orders']}".ljust(4),  # Shortened to 'tot', reduced padding
+                        "deliv": f"{stats['orders_delivered']}".ljust(5),  # Shortened to 'deliv', reduced padding
+                    }
+                )
                 pbar.update(1)
-                #pbar.update(1)
-                
+                # pbar.update(1)
+
                 # Save checkpoints at regular intervals
                 if (episode_in_phase + 1) % save_interval == 0:
                     # Create checkpoint name
-                    checkpoint_path = os.path.join(phase_dir, f"rl_aca_phase{current_phase_idx+1}_ep{episode_in_phase+1}.pt")
-                    
+                    checkpoint_path = os.path.join(
+                        phase_dir, f"rl_aca_phase{current_phase_idx+1}_ep{episode_in_phase+1}.pt"
+                    )
+
                     # Create resuming info
                     resume_info = {
                         "phase": current_phase_idx,
                         "episode": episode_in_phase + 1,
                         "timestamp": timestamp,
                     }
-                    
+
                     # Save resuming info
                     with open(os.path.join(phase_dir, "resuming_info.json"), "w") as f:
                         json.dump(resume_info, f)
-                    
+
                     # Copy latest model to checkpoint
                     if os.path.exists(latest_model_path):
                         try:
@@ -934,18 +929,18 @@ def train_rl_aca(
                             logger.error(f"Failed to save checkpoint: {e}")
                     else:
                         logger.warning(f"Could not save checkpoint: Model file {latest_model_path} does not exist")
-                    
+
                     # Save metrics
                     metrics_file = os.path.join(phase_dir, f"phased_metrics_{timestamp}.npz")
                     np.savez(
-                        metrics_file, 
+                        metrics_file,
                         phase_transitions=np.array(all_metrics["phase_transitions"]),
                         rewards=np.array(all_metrics["rewards"]),
                         delays=np.array(all_metrics["delays"]),
                         on_time_rates=np.array(all_metrics["on_time_rates"]),
-                        postponement_rates=np.array(all_metrics["postponement_rates"])
+                        postponement_rates=np.array(all_metrics["postponement_rates"]),
                     )
-                
+
                 # Check if phase completion criteria are met
                 criteria_met, reason = check_phase_criteria(
                     phase_metrics=phase_metrics,
@@ -954,16 +949,16 @@ def train_rl_aca(
                     max_episodes=max_episodes,
                     stability_window=stability_window,
                     stability_threshold=stability_threshold,
-                    performance_criteria=current_phase["performance_criteria"]
+                    performance_criteria=current_phase["performance_criteria"],
                 )
-                
+
                 # Check if phase is complete
                 if criteria_met or episode_in_phase >= max_episodes:
                     phase_complete = True
-                    
+
                     # Save phase transition point
                     all_metrics["phase_transitions"].append(len(all_metrics["rewards"]) - 1)
-                    
+
                     # Save phase final model
                     phase_final_path = os.path.join(phase_dir, f"rl_aca_phase{current_phase_idx+1}_final.pt")
                     if os.path.exists(latest_model_path):
@@ -974,15 +969,15 @@ def train_rl_aca(
                             logger.error(f"Failed to create final model: {e}")
                     else:
                         logger.warning(f"Cannot create final model - source file {latest_model_path} not found")
-                    
+
                     # Plot phase results
                     plot_phase_results(phase_metrics, current_phase_idx, phase_name, phase_dir, timestamp)
-                    
+
                     # Log completion message
                     if criteria_met:
                         logger.info(f"Phase {current_phase_idx + 1} completed after {episode_in_phase + 1} episodes")
                         logger.info(f"Reason: {reason}")
-                
+
                 # Increment episode counter
                 episode_in_phase += 1
                 total_completed_episodes += 1  # Increment total completed episodes
@@ -990,13 +985,13 @@ def train_rl_aca(
         # Move to next phase
         current_phase_idx += 1
         start_episode = 0  # Reset episode counter for next phase
-    
+
     # Training complete - plot overall results
     plot_training_results(all_metrics, phases, phase_dir, timestamp)
-    
+
     # Get path to final model
     final_model_path = os.path.join(phase_dir, f"rl_aca_phase{len(phases)}_final.pt")
-    
+
     logger.info(f"Phased training completed. Final model saved to {final_model_path}")
     return final_model_path
 
@@ -1008,11 +1003,11 @@ def check_phase_criteria(
     max_episodes: int,
     stability_window: int,
     stability_threshold: float,
-    performance_criteria: Dict
+    performance_criteria: Dict,
 ) -> Tuple[bool, str]:
     """
     Check if the performance criteria for the current phase have been met.
-    
+
     Args:
         phase_metrics: Dictionary of metrics for the current phase
         episode_count: Number of episodes run in this phase
@@ -1021,26 +1016,26 @@ def check_phase_criteria(
         stability_window: Number of recent episodes to check for stability
         stability_threshold: Maximum percentage change in reward
         performance_criteria: Dictionary of criteria to meet
-        
+
     Returns:
         Tuple of (criteria_met, reason)
     """
     # Ensure minimum episodes have been run
     if episode_count < min_episodes:
         return False, f"Minimum episodes not reached ({episode_count}/{min_episodes})"
-    
+
     # Get metrics from recent episodes
     if len(phase_metrics["rewards"]) < stability_window:
         return False, f"Not enough data for stability check ({len(phase_metrics['rewards'])}/{stability_window})"
-    
+
     recent_rewards = phase_metrics["rewards"][-stability_window:]
     recent_delays = phase_metrics["delays"][-stability_window:]
     recent_on_time = phase_metrics["on_time_rates"][-stability_window:]
-    
+
     # Check reward stability using max-min range
     min_reward = min(recent_rewards)
     max_reward = max(recent_rewards)
-    
+
     # For negative rewards (common in RL), we use absolute values to calculate percentage
     if min_reward < 0 and max_reward < 0:
         # Both rewards are negative, so use absolute values
@@ -1051,38 +1046,38 @@ def check_phase_criteria(
     elif min_reward >= 0 and max_reward >= 0:
         # Both rewards are positive
         if min_reward == 0:
-            percent_range = float('inf') if max_reward > 0 else 0.0
+            percent_range = float("inf") if max_reward > 0 else 0.0
         else:
             percent_range = (max_reward - min_reward) / min_reward * 100.0
     else:
         # Rewards cross zero, which indicates high instability
         percent_range = 100.0  # Just set to a high value
-    
+
     if percent_range > stability_threshold:
         return False, f"Reward not stable: {percent_range:.2f}% range > {stability_threshold:.2f}% threshold"
-    
+
     # Check average reward criteria
     if "min_avg_reward" in performance_criteria:
         avg_reward = np.mean(recent_rewards)
         if avg_reward < performance_criteria["min_avg_reward"]:
             return False, f"Average reward too low: {avg_reward:.2f} < {performance_criteria['min_avg_reward']:.2f}"
-    
+
     # Check on-time delivery rate criteria
     if "min_on_time_rate" in performance_criteria:
         avg_on_time = np.mean(recent_on_time)
         if avg_on_time < performance_criteria["min_on_time_rate"]:
             return False, f"On-time rate too low: {avg_on_time:.2f}% < {performance_criteria['min_on_time_rate']:.2f}%"
-    
+
     # Check maximum average delay criteria
     if "max_avg_delay" in performance_criteria:
         avg_delay = np.mean(recent_delays)
         if avg_delay > performance_criteria["max_avg_delay"]:
             return False, f"Average delay too high: {avg_delay:.2f} > {performance_criteria['max_avg_delay']:.2f}"
-    
+
     # Force phase transition if max episodes reached
     if episode_count >= max_episodes:
         return True, f"Maximum episodes reached ({max_episodes})"
-            
+
     # All criteria met
     return True, "All criteria met"
 
@@ -1090,7 +1085,7 @@ def check_phase_criteria(
 def plot_phase_results(metrics, phase_idx, phase_name, output_dir, timestamp):
     """Plot results for a single training phase with trend lines."""
     plt.figure(figsize=(15, 10))
-    
+
     # Number of episodes for x-axis
     episodes = np.arange(len(metrics["rewards"]))
 
@@ -1152,10 +1147,10 @@ def plot_phase_results(metrics, phase_idx, phase_name, output_dir, timestamp):
 def plot_training_results(metrics, phases, output_dir, timestamp):
     """Plot overall training results across all phases with trend lines."""
     plt.figure(figsize=(15, 12))
-    
+
     # Number of episodes for x-axis
     episodes = np.arange(len(metrics["rewards"]))
-    
+
     # Get phase transition points
     phase_transitions = metrics["phase_transitions"]
 
@@ -1170,9 +1165,14 @@ def plot_training_results(metrics, phases, output_dir, timestamp):
     plt.xlabel("Total Episodes")
     plt.ylabel("Reward")
     for i, transition in enumerate(phase_transitions):
-        plt.axvline(x=transition, color='g', linestyle='--')
-        plt.text(transition, plt.ylim()[0] + (plt.ylim()[1] - plt.ylim()[0])*0.1, 
-                 f"P{i+1}→P{i+2}", rotation=90, verticalalignment='bottom')
+        plt.axvline(x=transition, color="g", linestyle="--")
+        plt.text(
+            transition,
+            plt.ylim()[0] + (plt.ylim()[1] - plt.ylim()[0]) * 0.1,
+            f"P{i+1}→P{i+2}",
+            rotation=90,
+            verticalalignment="bottom",
+        )
     plt.legend()
 
     # Plot delays
@@ -1186,9 +1186,14 @@ def plot_training_results(metrics, phases, output_dir, timestamp):
     plt.xlabel("Total Episodes")
     plt.ylabel("Delay (minutes)")
     for i, transition in enumerate(phase_transitions):
-        plt.axvline(x=transition, color='g', linestyle='--')
-        plt.text(transition, plt.ylim()[0] + (plt.ylim()[1] - plt.ylim()[0])*0.1, 
-                 f"P{i+1}→P{i+2}", rotation=90, verticalalignment='bottom')
+        plt.axvline(x=transition, color="g", linestyle="--")
+        plt.text(
+            transition,
+            plt.ylim()[0] + (plt.ylim()[1] - plt.ylim()[0]) * 0.1,
+            f"P{i+1}→P{i+2}",
+            rotation=90,
+            verticalalignment="bottom",
+        )
     plt.legend()
 
     # Plot on-time rates
@@ -1203,9 +1208,14 @@ def plot_training_results(metrics, phases, output_dir, timestamp):
     plt.ylabel("On-Time Rate (%)")
     plt.ylim(0, 100)
     for i, transition in enumerate(phase_transitions):
-        plt.axvline(x=transition, color='g', linestyle='--')
-        plt.text(transition, plt.ylim()[0] + (plt.ylim()[1] - plt.ylim()[0])*0.1, 
-                 f"P{i+1}→P{i+2}", rotation=90, verticalalignment='bottom')
+        plt.axvline(x=transition, color="g", linestyle="--")
+        plt.text(
+            transition,
+            plt.ylim()[0] + (plt.ylim()[1] - plt.ylim()[0]) * 0.1,
+            f"P{i+1}→P{i+2}",
+            rotation=90,
+            verticalalignment="bottom",
+        )
     plt.legend()
 
     # Plot postponement rates
@@ -1220,9 +1230,14 @@ def plot_training_results(metrics, phases, output_dir, timestamp):
     plt.ylabel("Postponement Rate (%)")
     plt.ylim(0, 100)
     for i, transition in enumerate(phase_transitions):
-        plt.axvline(x=transition, color='g', linestyle='--')
-        plt.text(transition, plt.ylim()[0] + (plt.ylim()[1] - plt.ylim()[0])*0.1, 
-                 f"P{i+1}→P{i+2}", rotation=90, verticalalignment='bottom')
+        plt.axvline(x=transition, color="g", linestyle="--")
+        plt.text(
+            transition,
+            plt.ylim()[0] + (plt.ylim()[1] - plt.ylim()[0]) * 0.1,
+            f"P{i+1}→P{i+2}",
+            rotation=90,
+            verticalalignment="bottom",
+        )
     plt.legend()
 
     plt.tight_layout()
@@ -1234,23 +1249,23 @@ def find_latest_model(model_dir="data/models"):
     """Find the latest phased training model and its resume information."""
     if not os.path.exists(model_dir):
         return None, 0, 0
-    
+
     # Find phased training directories
     phased_dirs = [d for d in os.listdir(model_dir) if d.startswith("phased_training_")]
     if not phased_dirs:
         return None, 0, 0
-    
+
     # Find the most recent directory
     phased_dirs.sort(reverse=True)
     latest_dir = os.path.join(model_dir, phased_dirs[0])
-    
+
     # Try to find the latest final model from the highest phase
     for phase in range(10, 0, -1):  # Look from phase 10 down to 1
         final_model = os.path.join(latest_dir, f"rl_aca_phase{phase}_final.pt")
         if os.path.exists(final_model):
             logger.info(f"Found final model for phase {phase}: {final_model}")
-            return final_model, phase-1, 0
-    
+            return final_model, phase - 1, 0
+
     # If no final models found, try the latest.pt file
     latest_model = os.path.join(latest_dir, "rl_aca_latest.pt")
     if os.path.exists(latest_model):
@@ -1262,20 +1277,21 @@ def find_latest_model(model_dir="data/models"):
                 episode = resume_info.get("episode", 0)
                 return latest_model, phase, episode
         return latest_model, 0, 0
-    
+
     # Fallback: look for any pt files in the directory
-    model_files = [f for f in os.listdir(latest_dir) if f.endswith('.pt')]
+    model_files = [f for f in os.listdir(latest_dir) if f.endswith(".pt")]
     if model_files:
         model_files.sort(reverse=True)  # Sort to get newest first
         model_path = os.path.join(latest_dir, model_files[0])
-        
+
         # Try to extract phase from filename using regex
         import re
-        phase_match = re.search(r'phase(\d+)', model_files[0])
-        phase = int(phase_match.group(1))-1 if phase_match else 0
-        
+
+        phase_match = re.search(r"phase(\d+)", model_files[0])
+        phase = int(phase_match.group(1)) - 1 if phase_match else 0
+
         return model_path, phase, 0
-    
+
     return None, 0, 0
 
 
@@ -1285,10 +1301,10 @@ def evaluate_model(
     seed: int = 100,
     visualize: bool = False,
     env_config=None,  # Added parameter for environment config
-    ):
+):
     """
     Evaluate a trained RL-ACA model over multiple episodes.
-    
+
     Args:
         model_path: Path to the trained model
         num_episodes: Number of evaluation episodes
@@ -1298,18 +1314,13 @@ def evaluate_model(
         env_config: Optional environment configuration to use for evaluation
     """
     # Metrics to track
-    metrics = {
-        "total_rewards": [],
-        "total_delays": [],
-        "on_time_rates": [],
-        "max_delays": []
-    }
-    
+    metrics = {"total_rewards": [], "total_delays": [], "on_time_rates": [], "max_delays": []}
+
     logger.info(f"Evaluating model: {model_path}")
-    
+
     # Use default environment if none provided
     env_params = env_config or {}
-    
+
     # Evaluation loop
     for episode in tqdm(range(num_episodes), desc="Evaluating RL-ACA"):
         # Run an episode with training disabled
@@ -1321,31 +1332,31 @@ def evaluate_model(
             rl_model_path=model_path,
             exploration_rate=0.00,
             training_mode=False,  # Set to False for evaluation
-            env_config=env_params  # Pass as a single dictionary
+            env_config=env_params,  # Pass as a single dictionary
         )
-        
+
         # Track metrics
         metrics["total_rewards"].append(stats["total_reward"])
         metrics["total_delays"].append(sum(stats["delay_values"]) if stats["delay_values"] else 0)
         metrics["max_delays"].append(stats["max_delay"])
-        
+
         total_orders = max(1, stats["orders_delivered"])
         late_orders = len(stats["late_orders"])
         on_time_rate = ((total_orders - late_orders) / total_orders) * 100
         metrics["on_time_rates"].append(on_time_rate)
-    
+
     # Calculate average metrics
     avg_reward = np.mean(metrics["total_rewards"])
     avg_delay = np.mean(metrics["total_delays"])
     avg_on_time = np.mean(metrics["on_time_rates"])
     avg_max_delay = np.mean(metrics["max_delays"])
-    
+
     logger.info(f"Evaluation Results ({num_episodes} episodes):")
     logger.info(f"Average Reward: {avg_reward:.2f}")
     logger.info(f"Average Total Delay: {avg_delay:.2f} minutes")
     logger.info(f"Average On-Time Rate: {avg_on_time:.2f}%")
     logger.info(f"Average Max Delay: {avg_max_delay:.2f} minutes")
-    
+
     return metrics
 
 
@@ -1355,26 +1366,26 @@ def compare_models(
     rl_model_path: str = None,
     seed: int = 1,
     visualize: bool = False,
-    env_config=None,  # Added parameter for environment config  
-    ):
+    env_config=None,  # Added parameter for environment config
+):
     """
     Compare the RL-based ACA with the original heuristic ACA.
     """
     logger.info("Comparing heuristic ACA vs RL-based ACA")
-    
+
     # Use default environment if none provided
     env_params = env_config or {}
-    
+
     # Run heuristic ACA episodes
     heuristic_metrics = {
         "total_rewards": [],
         "total_delays": [],
         "on_time_rates": [],
         "postponement_rates": [],
-        "total_orders": [],      # Add to collect total orders
-        "orders_delivered": []   # Add to collect orders delivered
+        "total_orders": [],  # Add to collect total orders
+        "orders_delivered": [],  # Add to collect orders delivered
     }
-    
+
     # Create a tqdm progress bar object for heuristic ACA
     pbar_heuristic = tqdm(range(heuristic_episodes), desc="Running Heuristic ACA")
     for episode in pbar_heuristic:
@@ -1384,46 +1395,48 @@ def compare_models(
             reposition_idle_vehicles=False,
             visualize=visualize,
             env_config=env_params,  # Pass as a single parameter instead of unpacking
-            training_mode=False  # Not strictly necessary for ACA, but for consistency
+            training_mode=False,  # Not strictly necessary for ACA, but for consistency
         )
-        
+
         heuristic_metrics["total_rewards"].append(stats["total_reward"])
         heuristic_metrics["total_delays"].append(sum(stats["delay_values"]) if stats["delay_values"] else 0)
-        
+
         total_orders = max(1, stats["orders_delivered"])
         late_orders = len(stats["late_orders"])
         on_time_rate = ((total_orders - late_orders) / total_orders) * 100
         heuristic_metrics["on_time_rates"].append(on_time_rate)
-        
+
         postponement_rate = len(stats["postponed_orders"]) / max(1, stats["total_orders"]) * 100
         heuristic_metrics["postponement_rates"].append(postponement_rate)
-        
+
         # Collect new metrics
         heuristic_metrics["total_orders"].append(stats["total_orders"])
         heuristic_metrics["orders_delivered"].append(stats["orders_delivered"])
-        
+
         # Update progress bar with key metrics
-        pbar_heuristic.set_postfix({
-            'rew': f"{stats['total_reward']:.1f}".ljust(7),
-            'ot': f"{on_time_rate:.0f}%".ljust(5),
-            'del': f"{sum(stats['delay_values']) if stats['delay_values'] else 0:.0f}".ljust(5),
-            'sd': f"{seed + episode}".ljust(4),
-            'post': f"{postponement_rate:.0f}%".ljust(6),
-            'tot': f"{stats['total_orders']}".ljust(4),
-            'deliv': f"{stats['orders_delivered']}".ljust(5),
-            'idle': f"{stats.get('active_period_idle_rate', 0) * 100:.0f}%".ljust(6)
-        })
-    
+        pbar_heuristic.set_postfix(
+            {
+                "rew": f"{stats['total_reward']:.1f}".ljust(7),
+                "ot": f"{on_time_rate:.0f}%".ljust(5),
+                "del": f"{sum(stats['delay_values']) if stats['delay_values'] else 0:.0f}".ljust(5),
+                "sd": f"{seed + episode}".ljust(4),
+                "post": f"{postponement_rate:.0f}%".ljust(6),
+                "tot": f"{stats['total_orders']}".ljust(4),
+                "deliv": f"{stats['orders_delivered']}".ljust(5),
+                "idle": f"{stats.get('active_period_idle_rate', 0) * 100:.0f}%".ljust(6),
+            }
+        )
+
     # Run RL-based ACA episodes
     rl_metrics = {
         "total_rewards": [],
         "total_delays": [],
         "on_time_rates": [],
         "postponement_rates": [],
-        "total_orders": [],      # Add to collect total orders
-        "orders_delivered": []   # Add to collect orders delivered
+        "total_orders": [],  # Add to collect total orders
+        "orders_delivered": [],  # Add to collect orders delivered
     }
-    
+
     # Create a tqdm progress bar object for RL-based ACA
     pbar_rl = tqdm(range(rl_episodes), desc="Running RL-based ACA")
     for episode in pbar_rl:
@@ -1435,42 +1448,46 @@ def compare_models(
             rl_model_path=rl_model_path,
             exploration_rate=0.00,
             env_config=env_params,  # Pass as a single parameter instead of unpacking
-            training_mode=False  # Not strictly necessary for ACA, but for consistency
+            training_mode=False,  # Not strictly necessary for ACA, but for consistency
         )
-        
+
         rl_metrics["total_rewards"].append(stats["total_reward"])
         rl_metrics["total_delays"].append(sum(stats["delay_values"]) if stats["delay_values"] else 0)
-        
+
         total_orders = max(1, stats["orders_delivered"])
         late_orders = len(stats["late_orders"])
         on_time_rate = ((total_orders - late_orders) / total_orders) * 100
         rl_metrics["on_time_rates"].append(on_time_rate)
-        
+
         postponement_rate = len(stats["postponed_orders"]) / max(1, stats["total_orders"]) * 100
         rl_metrics["postponement_rates"].append(postponement_rate)
-        
+
         # Collect new metrics
         rl_metrics["total_orders"].append(stats["total_orders"])
         rl_metrics["orders_delivered"].append(stats["orders_delivered"])
-        
+
         # Log detailed metrics for debugging
-        logger.debug(f"RL-ACA Episode {episode + 1} (Seed {seed + episode}): "
-                     f"Total Orders={stats['total_orders']}, "
-                     f"Orders Delivered={stats['orders_delivered']}, "
-                     f"Postponement Rate={postponement_rate:.1f}%, "
-                     f"Idle Rate={stats.get('active_period_idle_rate', 0) * 100:.1f}%")
-        
+        logger.debug(
+            f"RL-ACA Episode {episode + 1} (Seed {seed + episode}): "
+            f"Total Orders={stats['total_orders']}, "
+            f"Orders Delivered={stats['orders_delivered']}, "
+            f"Postponement Rate={postponement_rate:.1f}%, "
+            f"Idle Rate={stats.get('active_period_idle_rate', 0) * 100:.1f}%"
+        )
+
         # Update progress bar with key metrics
-        pbar_rl.set_postfix({
-            'rew': f"{stats['total_reward']:.1f}".ljust(7),
-            'ot': f"{on_time_rate:.0f}%".ljust(5),
-            'del': f"{sum(stats['delay_values']) if stats['delay_values'] else 0:.0f}".ljust(5),
-            'sd': f"{seed + episode}".ljust(4),
-            'post': f"{postponement_rate:.0f}%".ljust(6),
-            'tot': f"{stats['total_orders']}".ljust(4),
-            'deliv': f"{stats['orders_delivered']}".ljust(5),
-            'idle': f"{stats.get('active_period_idle_rate', 0) * 100:.0f}%".ljust(6)
-        })
+        pbar_rl.set_postfix(
+            {
+                "rew": f"{stats['total_reward']:.1f}".ljust(7),
+                "ot": f"{on_time_rate:.0f}%".ljust(5),
+                "del": f"{sum(stats['delay_values']) if stats['delay_values'] else 0:.0f}".ljust(5),
+                "sd": f"{seed + episode}".ljust(4),
+                "post": f"{postponement_rate:.0f}%".ljust(6),
+                "tot": f"{stats['total_orders']}".ljust(4),
+                "deliv": f"{stats['orders_delivered']}".ljust(5),
+                "idle": f"{stats.get('active_period_idle_rate', 0) * 100:.0f}%".ljust(6),
+            }
+        )
 
     # Calculate average metrics
     heuristic_avg_reward = np.mean(heuristic_metrics["total_rewards"])
@@ -1479,24 +1496,36 @@ def compare_models(
     heuristic_avg_postpone = np.mean(heuristic_metrics["postponement_rates"])
     heuristic_avg_total_orders = np.mean(heuristic_metrics["total_orders"])
     heuristic_avg_orders_delivered = np.mean(heuristic_metrics["orders_delivered"])
-    
+
     rl_avg_reward = np.mean(rl_metrics["total_rewards"])
     rl_avg_delay = np.mean(rl_metrics["total_delays"])
     rl_avg_on_time = np.mean(rl_metrics["on_time_rates"])
     rl_avg_postpone = np.mean(rl_metrics["postponement_rates"])
     rl_avg_total_orders = np.mean(rl_metrics["total_orders"])
     rl_avg_orders_delivered = np.mean(rl_metrics["orders_delivered"])
-    
+
     logger.info("\nComparison Results:")
     logger.info(f"{'Metric':<25} {'Heuristic ACA':<20} {'RL-based ACA':<20} {'Improvement':<15}")
     logger.info(f"{'-'*70}")
-    logger.info(f"{'Average Reward':<25} {heuristic_avg_reward:<20.2f} {rl_avg_reward:<20.2f} {((rl_avg_reward - heuristic_avg_reward) / abs(heuristic_avg_reward)) * 100:<15.2f}%")
-    logger.info(f"{'Average Total Delay':<25} {heuristic_avg_delay:<20.2f} {rl_avg_delay:<20.2f} {((heuristic_avg_delay - rl_avg_delay) / heuristic_avg_delay) * 100:<15.2f}%")
-    logger.info(f"{'Average On-Time Rate':<25} {heuristic_avg_on_time:<20.2f}% {rl_avg_on_time:<20.2f}% {(rl_avg_on_time - heuristic_avg_on_time):<15.2f}pp")
-    logger.info(f"{'Postponement Rate':<25} {heuristic_avg_postpone:<20.2f}% {rl_avg_postpone:<20.2f}% {(rl_avg_postpone - heuristic_avg_postpone):<15.2f}pp")
-    logger.info(f"{'Avg Total Orders':<25} {heuristic_avg_total_orders:<20.2f} {rl_avg_total_orders:<20.2f} {(rl_avg_total_orders - heuristic_avg_total_orders):<15.2f}")
-    logger.info(f"{'Avg Orders Delivered':<25} {heuristic_avg_orders_delivered:<20.2f} {rl_avg_orders_delivered:<20.2f} {(rl_avg_orders_delivered - heuristic_avg_orders_delivered):<15.2f}")
-    
+    logger.info(
+        f"{'Average Reward':<25} {heuristic_avg_reward:<20.2f} {rl_avg_reward:<20.2f} {((rl_avg_reward - heuristic_avg_reward) / abs(heuristic_avg_reward)) * 100:<15.2f}%"
+    )
+    logger.info(
+        f"{'Average Total Delay':<25} {heuristic_avg_delay:<20.2f} {rl_avg_delay:<20.2f} {((heuristic_avg_delay - rl_avg_delay) / heuristic_avg_delay) * 100:<15.2f}%"
+    )
+    logger.info(
+        f"{'Average On-Time Rate':<25} {heuristic_avg_on_time:<20.2f}% {rl_avg_on_time:<20.2f}% {(rl_avg_on_time - heuristic_avg_on_time):<15.2f}pp"
+    )
+    logger.info(
+        f"{'Postponement Rate':<25} {heuristic_avg_postpone:<20.2f}% {rl_avg_postpone:<20.2f}% {(rl_avg_postpone - heuristic_avg_postpone):<15.2f}pp"
+    )
+    logger.info(
+        f"{'Avg Total Orders':<25} {heuristic_avg_total_orders:<20.2f} {rl_avg_total_orders:<20.2f} {(rl_avg_total_orders - heuristic_avg_total_orders):<15.2f}"
+    )
+    logger.info(
+        f"{'Avg Orders Delivered':<25} {heuristic_avg_orders_delivered:<20.2f} {rl_avg_orders_delivered:<20.2f} {(rl_avg_orders_delivered - heuristic_avg_orders_delivered):<15.2f}"
+    )
+
     # Create comparison plots as line charts
     plt.figure(figsize=(15, 12))
 
@@ -1507,8 +1536,8 @@ def compare_models(
 
     # Plot rewards comparison
     plt.subplot(2, 2, 1)
-    plt.plot(heuristic_x, heuristic_metrics["total_rewards"], 'o-', label="Heuristic")
-    plt.plot(rl_x, rl_metrics["total_rewards"], 'o-', label="RL")
+    plt.plot(heuristic_x, heuristic_metrics["total_rewards"], "o-", label="Heuristic")
+    plt.plot(rl_x, rl_metrics["total_rewards"], "o-", label="RL")
 
     # Add trend lines
     if len(heuristic_x) > 1:
@@ -1528,8 +1557,8 @@ def compare_models(
 
     # Plot delay comparison
     plt.subplot(2, 2, 2)
-    plt.plot(heuristic_x, heuristic_metrics["total_delays"], 'o-', label="Heuristic")
-    plt.plot(rl_x, rl_metrics["total_delays"], 'o-', label="RL")
+    plt.plot(heuristic_x, heuristic_metrics["total_delays"], "o-", label="Heuristic")
+    plt.plot(rl_x, rl_metrics["total_delays"], "o-", label="RL")
 
     # Add trend lines
     if len(heuristic_x) > 1:
@@ -1549,8 +1578,8 @@ def compare_models(
 
     # Plot on-time rate comparison
     plt.subplot(2, 2, 3)
-    plt.plot(heuristic_x, heuristic_metrics["on_time_rates"], 'o-', label="Heuristic")
-    plt.plot(rl_x, rl_metrics["on_time_rates"], 'o-', label="RL")
+    plt.plot(heuristic_x, heuristic_metrics["on_time_rates"], "o-", label="Heuristic")
+    plt.plot(rl_x, rl_metrics["on_time_rates"], "o-", label="RL")
 
     # Add trend lines
     if len(heuristic_x) > 1:
@@ -1571,8 +1600,8 @@ def compare_models(
 
     # Plot postponement rate comparison
     plt.subplot(2, 2, 4)
-    plt.plot(heuristic_x, heuristic_metrics["postponement_rates"], 'o-', label="Heuristic")
-    plt.plot(rl_x, rl_metrics["postponement_rates"], 'o-', label="RL")
+    plt.plot(heuristic_x, heuristic_metrics["postponement_rates"], "o-", label="Heuristic")
+    plt.plot(rl_x, rl_metrics["postponement_rates"], "o-", label="RL")
 
     # Add trend lines
     if len(heuristic_x) > 1:
@@ -1590,25 +1619,23 @@ def compare_models(
     plt.ylabel("Postponement Rate (%)")
     plt.ylim(0, 100)
     plt.legend()
-    
+
     plt.tight_layout()
-    
+
     # Save plot
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     comparison_path = f"data/models/aca_comparison_{timestamp}.png"
     plt.savefig(comparison_path, dpi=300)
     plt.close()
-    
+
     logger.info(f"\nComparison chart saved to {comparison_path}")
-    return {
-        "heuristic": heuristic_metrics,
-        "rl": rl_metrics
-    }
+    return {"heuristic": heuristic_metrics, "rl": rl_metrics}
+
 
 def plot_losses(losses, save_path, window_size=20, phase_idx=None, episode_idx=None, total_steps=None):
     """
     Plot the training losses and overwrite the existing plot.
-    
+
     Args:
         losses: List of loss values
         save_path: Path to save the plot (will be overwritten)
@@ -1620,49 +1647,52 @@ def plot_losses(losses, save_path, window_size=20, phase_idx=None, episode_idx=N
     import matplotlib.pyplot as plt
     import numpy as np
     import os
-    
+
     if not losses:
         logger.warning("No loss data available to plot")
         return
-    
+
     iterations = list(range(len(losses)))
-    
+
     plt.figure(figsize=(12, 6))
-    
+
     # Plot raw losses
-    plt.plot(iterations, losses, 'b-', alpha=0.3, label='Raw Loss')
-    
+    plt.plot(iterations, losses, "b-", alpha=0.3, label="Raw Loss")
+
     # Dynamic window size: use the smaller of window_size or 10% of total steps
     dynamic_window = min(window_size, max(1, len(losses) // 10))
     if len(losses) > dynamic_window:
         smoothed_losses = []
         for i in range(len(losses) - dynamic_window + 1):
-            smoothed_losses.append(sum(losses[i:i+dynamic_window]) / dynamic_window)
-        
+            smoothed_losses.append(sum(losses[i : i + dynamic_window]) / dynamic_window)
+
         smoothed_x = list(range(dynamic_window - 1, len(losses)))
-        plt.plot(smoothed_x, smoothed_losses, 'r-', linewidth=2, 
-                label=f'Moving Average (window={dynamic_window})')
-    
+        plt.plot(smoothed_x, smoothed_losses, "r-", linewidth=2, label=f"Moving Average (window={dynamic_window})")
+
     # Add titles and labels
-    title = f'Training Loss Over Time (Total Steps: {total_steps})'
+    title = f"Training Loss Over Time (Total Steps: {total_steps})"
     if phase_idx is not None and episode_idx is not None:
-        title += f'\nPhase {phase_idx}, Episode {episode_idx}'
+        title += f"\nPhase {phase_idx}, Episode {episode_idx}"
     plt.title(title)
-    plt.xlabel('Training Iterations')
-    plt.ylabel('Loss')
+    plt.xlabel("Training Iterations")
+    plt.ylabel("Loss")
     plt.legend()
     plt.grid(True, alpha=0.3)
-    
+
     # Add statistics
     if len(losses) > 0:
-        recent_losses = losses[-min(100, len(losses)):]
-        plt.figtext(0.01, 0.01, 
-                    f'Recent stats (last {len(recent_losses)}):\n'
-                    f'Min: {min(recent_losses):.4f}\n'
-                    f'Max: {max(recent_losses):.4f}\n'
-                    f'Mean: {sum(recent_losses)/len(recent_losses):.4f}',
-                    fontsize=10, bbox=dict(facecolor='white', alpha=0.8))
-    
+        recent_losses = losses[-min(100, len(losses)) :]
+        plt.figtext(
+            0.01,
+            0.01,
+            f"Recent stats (last {len(recent_losses)}):\n"
+            f"Min: {min(recent_losses):.4f}\n"
+            f"Max: {max(recent_losses):.4f}\n"
+            f"Mean: {sum(recent_losses)/len(recent_losses):.4f}",
+            fontsize=10,
+            bbox=dict(facecolor="white", alpha=0.8),
+        )
+
     # Save the plot with error handling and retry
     retries = 3
     base, ext = os.path.splitext(save_path)  # Split into 'loss_plot' and '.png'
@@ -1670,7 +1700,7 @@ def plot_losses(losses, save_path, window_size=20, phase_idx=None, episode_idx=N
         try:
             # Use a temporary file with proper extension
             temp_path = f"{base}_temp_{attempt}{ext}"  # e.g., 'loss_plot_temp_0.png'
-            plt.savefig(temp_path, dpi=300, bbox_inches='tight')
+            plt.savefig(temp_path, dpi=300, bbox_inches="tight")
             os.replace(temp_path, save_path)  # Move to final path
             logger.debug(f"Loss plot saved to {save_path}")
             plt.close()
@@ -1681,7 +1711,7 @@ def plot_losses(losses, save_path, window_size=20, phase_idx=None, episode_idx=N
                 logger.error(f"Could not save loss plot after {retries} attempts. Continuing training.")
                 plt.close()
                 return
-    
+
     plt.close()  # Ensure figure is closed
 
 
@@ -1702,11 +1732,10 @@ def define_training_phases():
             "performance_criteria": {
                 # No performance criteria - phase will run until max_episodes
             },
-            "min_episodes": 500, 
-            "max_episodes": 500   # More episodes for initial learning
+            "min_episodes": 500,
+            "max_episodes": 500,  # More episodes for initial learning
         }
         # ,
-        
         # # Phase 2: Intermediate Environment
         # {
         #     "name": "Intermediate Environment",
@@ -1722,7 +1751,6 @@ def define_training_phases():
         #     "min_episodes": 5000,  # 30, 100
         #     "max_episodes": 5000   # Substantial training in intermediate complexity
         # }#,
-        
         # # Phase 3: Full Environment
         # {
         #     "name": "Full Environment",
@@ -1739,7 +1767,7 @@ def define_training_phases():
         #     "max_episodes": 100   # Extensive training in full complexity
         # }
     ]
-    
+
     return phases
 
 
@@ -1747,34 +1775,51 @@ if __name__ == "__main__":
     # Check for command-line arguments for custom configuration
     import argparse
     import sys
-    
+
     parser = argparse.ArgumentParser(description="Train RL-ACA with phased curriculum learning")
-    parser.add_argument('--resume', action='store_true', help='Resume from latest checkpoint')
-    parser.add_argument('--visualize', action='store_true', help='Enable visualization')
-    parser.add_argument('--stability_window', type=int, default=10, help='Window size for stability check')
-    parser.add_argument('--stability_threshold', type=float, default=3.0, help='Percentage threshold for stability')
-    parser.add_argument('--save_interval', type=int, default=10, help='Save model every N episodes')
-    parser.add_argument('--seed', type=int, default=42, help='Random seed')
-    parser.add_argument('--compare', action='store_true', help='Compare with heuristic ACA after training')
-    parser.add_argument('--compare-only', action='store_true', help='Only compare existing model with heuristic ACA (no training)')
-    parser.add_argument('--model-path', type=str, default=None, help='Path to existing model for comparison (required with --compare-only)')
-    parser.add_argument('--no-compare', action='store_true', help='Do not compare with heuristic ACA after training')
-    parser.add_argument('--initial-exploration', type=float, default=0.9, help='Initial exploration rate (default: 0.9)')
-    parser.add_argument('--min-exploration', type=float, default=0.01, help='Minimum exploration rate (default: 0.05)')
-    parser.add_argument('--decay-method', type=str, choices=['linear', 'exponential'], default='exponential', help='Exploration rate decay method (default: linear)')
-    parser.add_argument('--decay-rate', type=float, default=0.99, help='Decay rate for exponential decay (default: 0.995)')
+    parser.add_argument("--resume", action="store_true", help="Resume from latest checkpoint")
+    parser.add_argument("--visualize", action="store_true", help="Enable visualization")
+    parser.add_argument("--stability_window", type=int, default=10, help="Window size for stability check")
+    parser.add_argument("--stability_threshold", type=float, default=3.0, help="Percentage threshold for stability")
+    parser.add_argument("--save_interval", type=int, default=10, help="Save model every N episodes")
+    parser.add_argument("--seed", type=int, default=42, help="Random seed")
+    parser.add_argument("--compare", action="store_true", help="Compare with heuristic ACA after training")
+    parser.add_argument(
+        "--compare-only", action="store_true", help="Only compare existing model with heuristic ACA (no training)"
+    )
+    parser.add_argument(
+        "--model-path",
+        type=str,
+        default=None,
+        help="Path to existing model for comparison (required with --compare-only)",
+    )
+    parser.add_argument("--no-compare", action="store_true", help="Do not compare with heuristic ACA after training")
+    parser.add_argument(
+        "--initial-exploration", type=float, default=0.9, help="Initial exploration rate (default: 0.9)"
+    )
+    parser.add_argument("--min-exploration", type=float, default=0.01, help="Minimum exploration rate (default: 0.05)")
+    parser.add_argument(
+        "--decay-method",
+        type=str,
+        choices=["linear", "exponential"],
+        default="exponential",
+        help="Exploration rate decay method (default: linear)",
+    )
+    parser.add_argument(
+        "--decay-rate", type=float, default=0.99, help="Decay rate for exponential decay (default: 0.995)"
+    )
     args = parser.parse_args()
-    
+
     # Set seed for reproducibility
     seed = args.seed
-    
+
     # Define phases for either training or comparison environment setup
     phases = define_training_phases()
-    
+
     if args.compare_only:
         # Skip training and go straight to comparison
         model_path = args.model_path
-        
+
         if not model_path:
             # Find latest model if no specific path provided
             model_path, _, _ = find_latest_model()
@@ -1783,10 +1828,10 @@ if __name__ == "__main__":
                 sys.exit(1)
             else:
                 logger.info(f"Using latest model found: {model_path}")
-        
+
         # Use final phase environment for comparison
         env_config = phases[-1]["env_config"]
-        
+
         logger.info(f"Comparing models using existing model at: {model_path}")
         compare_models(
             heuristic_episodes=100,
@@ -1794,14 +1839,14 @@ if __name__ == "__main__":
             rl_model_path=model_path,
             seed=seed,
             visualize=args.visualize,
-            env_config=env_config
+            env_config=env_config,
         )
     else:
         # Regular training mode
         # Check for existing models to resume from if requested
         if args.resume:
             latest_model, phase, episode = find_latest_model()
-            
+
             if latest_model and os.path.exists(latest_model):
                 logger.info(f"Found existing model: {latest_model}")
                 logger.info(f"Resuming from phase {phase+1}, episode {episode}")
@@ -1817,7 +1862,7 @@ if __name__ == "__main__":
             latest_model = None
             phase = 0
             episode = 0
-        
+
         # Run phased training
         final_model_path = train_rl_aca(
             phases=phases,
@@ -1842,19 +1887,19 @@ if __name__ == "__main__":
             rl_exploration_decay=0.999,
             exploration_end=0.05,
             rl_bundling_reward=0.0,
-            rl_postponement_penalty=0.00, # -0.05
-            rl_on_time_reward=0.0
+            rl_postponement_penalty=0.00,  # -0.05
+            rl_on_time_reward=0.0,
         )
 
         # Always compare after training, unless explicitly turned off
-        if not hasattr(args, 'no_compare') or not args.no_compare:
+        if not hasattr(args, "no_compare") or not args.no_compare:
             compare_models(
                 heuristic_episodes=100,
                 rl_episodes=100,
                 rl_model_path=final_model_path,
                 seed=seed,
                 visualize=args.visualize,
-                env_config=phases[-1]["env_config"]
+                env_config=phases[-1]["env_config"],
             )
 
 
@@ -1879,4 +1924,4 @@ if __name__ == "__main__":
 
 # # Only compare using a specific model without training
 # python train_rl.py --compare-only --model-path path/to/your/model.pt
-# Model path example: 
+# Model path example:
