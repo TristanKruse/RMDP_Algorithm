@@ -5,6 +5,10 @@ __pycache__/
 data/meituan_data/*
 data/simulation_results/*
 data/models/*
+data/results/*
+data/bundling_results/*
+data/simulation_results/*
+data/test_results/*
 .webui_secret_key
 speed_analysis_results/*
 presentation_visualizations/*
