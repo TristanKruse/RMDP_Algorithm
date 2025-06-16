@@ -4,16 +4,15 @@ import train_rl
 
 def run_hyperparameter_tuning(num_experiments=20, episodes_per_experiment=500):
     hyperparameter_space = {
-        "learning_rate": [0.0001, 0.0002, 0.0003, 0.0004, 0.0005],
+        "learning_rate": [0.0001, 0.0002, 0.0003, 0.0004, 0.0005],  #
         "batch_size": [32, 64, 96],
         "target_update_frequency": [25, 50, 75],
         "discount_factor": [0.9, 0.95, 0.99],
         "exploration_decay": [0.99],
         "min_exploration_rate": [0.01, 0.05],
-        "postponement_penalty": [0.00, -0.005],
-        # Note: The following parameters are fixed for now
-        "bundling_reward": [0.00],
-        "on_time_reward": [0.0]
+        "postponement_penalty": [0.00],
+        "bundling_reward": [0.00, 0.5, 1.0, 3.0, 5.0],  #  5.0, 10.0,
+        "on_time_reward": [0.0],
     }
 
     results = []
@@ -34,7 +33,7 @@ def run_hyperparameter_tuning(num_experiments=20, episodes_per_experiment=500):
                 },
                 "performance_criteria": {},
                 "min_episodes": 20,
-                "max_episodes": episodes_per_experiment
+                "max_episodes": episodes_per_experiment,
             }
         ]
 
@@ -63,7 +62,7 @@ def run_hyperparameter_tuning(num_experiments=20, episodes_per_experiment=500):
                 rl_replay_buffer_capacity=50000,  # Fixed for now
                 rl_bundling_reward=params["bundling_reward"],
                 rl_postponement_penalty=params["postponement_penalty"],
-                rl_on_time_reward=params["on_time_reward"]
+                rl_on_time_reward=params["on_time_reward"],
             )
 
             # Evaluate the final model
@@ -72,7 +71,7 @@ def run_hyperparameter_tuning(num_experiments=20, episodes_per_experiment=500):
                 num_episodes=10,
                 seed=100,
                 visualize=False,
-                env_config=phases[-1]["env_config"]
+                env_config=phases[-1]["env_config"],
             )
 
             # Record the results
@@ -80,7 +79,10 @@ def run_hyperparameter_tuning(num_experiments=20, episodes_per_experiment=500):
                 "params": params,
                 "avg_reward": eval_stats["total_rewards"][-1],
                 "avg_delay": eval_stats["total_delays"][-1],
-                "avg_on_time_rate": eval_stats["on_time_rates"][-1]
+                "avg_on_time_rate": eval_stats["on_time_rates"][-1],
+                "avg_distance": eval_stats["total_distances"][-1],
+                "avg_vehicle_utilization": eval_stats["vehicle_utilizations"][-1],
+                "avg_travel_time": eval_stats["total_travel_times"][-1] if "total_travel_times" in eval_stats else 0.0,
             }
             results.append(result)
             print(f"Experiment {i+1} Results: {result}")
@@ -96,8 +98,12 @@ def run_hyperparameter_tuning(num_experiments=20, episodes_per_experiment=500):
         print(f"Best Average Reward: {best_result['avg_reward']}")
         print(f"Best Average Delay: {best_result['avg_delay']}")
         print(f"Best On-Time Rate: {best_result['avg_on_time_rate']}")
+        print(f"Best Average Distance: {best_result['avg_distance']:.2f} km")
+        print(f"Best Vehicle Utilization: {best_result['avg_vehicle_utilization']:.2f}%")
+        print(f"Best Average Travel Time: {best_result['avg_travel_time']:.2f} minutes")
     else:
         print("No successful experiments completed.")
 
+
 if __name__ == "__main__":
-    run_hyperparameter_tuning(num_experiments=20, episodes_per_experiment=500)
+    run_hyperparameter_tuning(num_experiments=40, episodes_per_experiment=500)

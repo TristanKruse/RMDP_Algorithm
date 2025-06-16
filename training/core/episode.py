@@ -1,12 +1,10 @@
 import os
-import json
 import logging
 from datetime import datetime
 from typing import Optional, Dict
 
 from environment.environment import RestaurantMealDeliveryEnv
 from environment.order_generator import OrderGenerator
-from environment.meituan_data.meituan_data_config import MeituanDataConfig
 
 from .stats import initialize_episode_stats, calculate_capacity_metrics
 from .bundling import detect_bundles
@@ -14,6 +12,8 @@ from ..config.env_config import get_env_config
 from ..config.solver_config import SOLVERS
 from ..utils.visualization import visualize_restaurant_distribution
 from ..utils.file_io import save_results
+
+from models.aca_policy.aca_policy import ACA
 
 logger = logging.getLogger(__name__)
 
@@ -91,7 +91,6 @@ def run_test_episode(
     rl_learning_rate: float = 0.0005,
     rl_discount_factor: float = 0.95,
     rl_exploration_rate: float = 0.9,
-    rl_exploration_decay: float = 0.99999,
     rl_min_exploration_rate: float = 0.2,
     rl_batch_size: int = 64,
     rl_target_update_frequency: int = 50,
@@ -222,7 +221,6 @@ def run_test_episode(
                 rl_learning_rate=rl_learning_rate,
                 rl_discount_factor=rl_discount_factor,
                 rl_exploration_rate=rl_exploration_rate,
-                rl_exploration_decay=rl_exploration_decay,
                 rl_min_exploration_rate=rl_min_exploration_rate,
                 rl_batch_size=rl_batch_size,
                 rl_target_update_frequency=rl_target_update_frequency,
@@ -360,23 +358,71 @@ def run_test_episode(
         step += 1
 
     # Handle undelivered orders at the end of the simulation
-    if (
-        solver_name == "rl_aca"
-        and hasattr(solver, "postponement")
-        and hasattr(solver.postponement, "record_order_delivery")
-    ):
-        undelivered_orders = set()
-        for order in state.orders:
-            if order.id not in delivered_orders_set:
-                undelivered_orders.add(order.id)
+    undelivered_orders = set()
+    for order in state.orders:
+        if order.id not in delivered_orders_set:
+            undelivered_orders.add(order.id)
 
+    if undelivered_orders:
         logger.info(f"Processing {len(undelivered_orders)} undelivered orders at simulation end (time: {state.time})")
+
+        # Track total delay from undelivered orders
+        total_undelivered_delay = 0
+
         for order_id in undelivered_orders:
             order = next((o for o in state.orders if o.id == order_id), None)
             if order:
                 current_delay = max(0, state.time - order.deadline)
-                was_bundled = order_id in episode_stats["bundled_orders"]
-                solver.postponement.record_order_delivery(order_id, current_delay, state.time, was_bundled=was_bundled)
+                total_undelivered_delay += current_delay
+
+                # Add delay to episode statistics and total reward
+                episode_stats["delay_values"].append(current_delay)
+                episode_stats["late_orders"].add(order_id)
+                episode_stats["max_delay"] = max(episode_stats["max_delay"], current_delay)
+                total_reward -= current_delay  # Add undelivered order delay to total reward
+
+                # logger.info(
+                #     f"Undelivered order {order_id}: "
+                #     f"request_time={order.request_time:.1f}, "
+                #     f"deadline={order.deadline:.1f}, "
+                #     f"current_time={state.time:.1f}, "
+                #     f"delay={current_delay:.1f}"
+                # )
+
+                # Update RL model if applicable
+                if (
+                    solver_name == "rl_aca"
+                    and hasattr(solver, "postponement")
+                    and hasattr(solver.postponement, "record_order_delivery")
+                ):
+                    was_bundled = order_id in episode_stats["bundled_orders"]
+                    solver.postponement.record_order_delivery(
+                        order_id, current_delay, state.time, was_bundled=was_bundled
+                    )
+                    # logger.info(
+                    #     f"RL feedback for order {order_id}: "
+                    #     f"delay={current_delay:.1f}, "
+                    #     f"was_bundled={was_bundled}"
+                    # )
+
+        # Log summary of undelivered orders
+        logger.info(
+            f"Summary of undelivered orders: "
+            f"count={len(undelivered_orders)}, "
+            f"total_delay={total_undelivered_delay:.1f}, "
+            f"avg_delay={total_undelivered_delay/len(undelivered_orders):.1f}"
+        )
+
+        # Log total statistics including undelivered orders
+        total_delay = sum(episode_stats["delay_values"])
+        logger.info(
+            f"Total statistics including undelivered orders: "
+            f"total_delay={total_delay:.1f}, "
+            f"max_delay={episode_stats['max_delay']:.1f}, "
+            f"total_orders={episode_stats['total_orders']}, "
+            f"delivered={episode_stats['orders_delivered']}, "
+            f"undelivered={len(undelivered_orders)}"
+        )
 
     # Save results
     episode_stats["total_reward"] = total_reward
@@ -419,8 +465,8 @@ def get_solver_params(solver):
     if hasattr(solver, "postponement_method"):
         return {
             "postponement_method": solver.postponement_method,
-            "vehicle_capacity": solver.vehicle_capacity,
-            "service_time": solver.service_time,
+            "vehicle_capacity": solver.route_utils.vehicle_capacity,
+            "service_time": solver.time_calculator.service_time,
             "postponement": solver.postponement.__class__.__name__ if hasattr(solver, "postponement") else None,
         }
     else:

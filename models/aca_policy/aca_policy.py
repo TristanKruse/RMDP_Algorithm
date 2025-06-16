@@ -50,17 +50,16 @@ class ACA:
         # RL parameters
         postponement_method: str = "heuristic",  # "heuristic" or "rl-aca"
         rl_training_mode: bool = True,
-        rl_state_size: int = 6,
+        rl_state_size: int = 7,
         rl_model_path: str = None,
         # Additional RL hyperparameters for tuning
         rl_learning_rate: float = 0.0005,
         rl_discount_factor: float = 0.95,
         rl_exploration_rate: float = 0.9,
-        rl_exploration_decay: float = 0.99999,
         rl_min_exploration_rate: float = 0.2,
         rl_batch_size: int = 64,
         rl_target_update_frequency: int = 50,
-        rl_replay_buffer_capacity: int = 50000,
+        rl_replay_buffer_capacity: int = 10000,
         rl_bundling_reward: float = 0.05,
         rl_postponement_penalty: float = -0.005,
         rl_on_time_reward: float = 0.2,
@@ -101,7 +100,6 @@ class ACA:
                 learning_rate=rl_learning_rate,
                 discount_factor=rl_discount_factor,
                 exploration_rate=rl_exploration_rate,
-                exploration_decay=rl_exploration_decay,
                 min_exploration_rate=rl_min_exploration_rate,
                 batch_size=rl_batch_size,
                 training_mode=rl_training_mode,
@@ -366,6 +364,8 @@ class ACA:
 
     def load_rl_model(self, path: str) -> None:
         """Load the RL model from the specified path."""
+        logger.info(f"Attempting to load RL model from {path}")
+
         if not os.path.exists(path):
             raise FileNotFoundError(f"RL model file not found: {path}")
 
@@ -377,7 +377,12 @@ class ACA:
 
         try:
             self.postponement.load_model(path)
-            logger.info(f"RL model loaded from {path}")
+            logger.info("=" * 50)
+            logger.info("RL model loaded successfully!")
+            logger.info(f"Model path: {path}")
+            logger.info(f"Training mode: {self.postponement.training_mode}")
+            logger.info(f"Exploration rate: {self.postponement.exploration_rate}")
+            logger.info("=" * 50)
         except Exception as e:
             logger.error(f"Error loading RL model: {str(e)}")
             raise

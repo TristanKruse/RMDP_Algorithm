@@ -93,7 +93,7 @@ class RestaurantMealDeliveryEnv:
             simulation_duration=simulation_duration,  # Pass simulation duration
         )
 
-        if demand_pattern and isinstance(demand_pattern, dict) and demand_pattern.get('type') == 'hourly':
+        if demand_pattern and isinstance(demand_pattern, dict) and demand_pattern.get("type") == "hourly":
             # Properly initialize the OrderGenerator for pattern mode
             self.order_generator = OrderGenerator(
                 mean_interarrival_time=mean_interarrival_time,
@@ -103,19 +103,19 @@ class RestaurantMealDeliveryEnv:
                 mean_prep_time=mean_prep_time,
                 prep_time_var=prep_time_var,
                 mode="pattern",
-                temporal_pattern=demand_pattern.get('hourly_rates', {})
+                temporal_pattern=demand_pattern.get("hourly_rates", {}),
             )
         # Set reference to order manager
         self.order_manager.set_order_generator(self.order_generator)
 
-
         self.route_processor = RouteProcessor(
-            service_time=service_time, location_manager=self.location_manager, 
-            movement_per_step=movement_per_step, 
-            reposition_idle_vehicles=reposition_idle_vehicles ,
-            vehicle_manager=self.vehicle_manager
+            service_time=service_time,
+            location_manager=self.location_manager,
+            movement_per_step=movement_per_step,
+            reposition_idle_vehicles=reposition_idle_vehicles,
+            vehicle_manager=self.vehicle_manager,
         )
-        
+
         self.state_handler = StateHandler(num_vehicles=num_vehicles)
 
         self.viz_manager = (
@@ -136,7 +136,7 @@ class RestaurantMealDeliveryEnv:
         # logger.info(f"self.current_time: {self.current_time}")
         # 1. Unpack the solver's action
         new_route_plan, postponed_orders = action
-        
+
         # Increment postpone_count for each postponed order
         for order_id in postponed_orders:
             for order in self.order_manager.active_orders:
