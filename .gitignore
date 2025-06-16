@@ -9,6 +9,7 @@ data/results/*
 data/bundling_results/*
 data/simulation_results/*
 data/test_results/*
+data/bundling_tuning
 .webui_secret_key
 speed_analysis_results/*
 presentation_visualizations/*
