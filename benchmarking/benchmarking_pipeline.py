@@ -29,11 +29,19 @@ class BenchmarkPipeline:
 
     def load_latest_results(self) -> pd.DataFrame:
         """Load the most recent benchmark results."""
+        # Look for both patterns: benchmark_results_*.csv and combined_with_baseline_*.csv
         csv_files = list(self.base_results_dir.glob("benchmark_results_*.csv"))
-        if not csv_files:
-            raise FileNotFoundError("No benchmark results found!")
+        combined_files = list(self.base_results_dir.glob("combined_with_baseline_*.csv"))
 
-        latest_file = max(csv_files, key=lambda x: x.stat().st_mtime)
+        # Combine both file lists
+        all_files = csv_files + combined_files
+
+        if not all_files:
+            raise FileNotFoundError(
+                "No benchmark results found! Looking for 'benchmark_results_*.csv' or 'combined_with_baseline_*.csv'"
+            )
+
+        latest_file = max(all_files, key=lambda x: x.stat().st_mtime)
         logger.info(f"Loading results from: {latest_file}")
         return pd.read_csv(latest_file)
 

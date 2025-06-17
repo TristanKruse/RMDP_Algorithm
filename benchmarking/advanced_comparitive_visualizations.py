@@ -1,318 +1,709 @@
-import os
-import logging
+import matplotlib.pyplot as plt
+import seaborn as sns
 import pandas as pd
 import numpy as np
-from datetime import datetime
-from typing import Dict, List, Optional
-import json
 from pathlib import Path
+import warnings
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s:%(lineno)d - %(levelname)s - %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-)
-logger = logging.getLogger(__name__)
+warnings.filterwarnings("ignore")
+
+# Set up plotting style
+plt.style.use("seaborn-v0_8")
+sns.set_palette("husl")
 
 
-class BenchmarkPipeline:
+class AdvancedBenchmarkVisualizer:
     """
-    Enhanced benchmarking pipeline with automated result processing,
-    statistical analysis, and integration capabilities.
+    Advanced visualization suite for algorithm benchmarking results.
+    Creates publication-ready comparative charts and analysis plots.
     """
 
-    def __init__(self, base_results_dir: str = "data/simulation_results"):
-        self.base_results_dir = Path(base_results_dir)
-        self.base_results_dir.mkdir(parents=True, exist_ok=True)
-        self.current_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    def __init__(self, results_dir: str = "data/simulation_results"):
+        self.results_dir = Path(results_dir)
+        self.viz_dir = self.results_dir / "advanced_visualizations"
+        self.viz_dir.mkdir(parents=True, exist_ok=True)
 
-    def load_latest_results(self) -> pd.DataFrame:
-        """Load the most recent benchmark results."""
-        csv_files = list(self.base_results_dir.glob("benchmark_results_*.csv"))
-        if not csv_files:
-            raise FileNotFoundError("No benchmark results found!")
+        # Color schemes for methods
+        self.method_colors = {"fastest": "#2E86AB", "aca": "#A23B72", "rl_aca": "#F18F01"}  # Blue  # Purple  # Orange
 
-        latest_file = max(csv_files, key=lambda x: x.stat().st_mtime)
-        logger.info(f"Loading results from: {latest_file}")
-        return pd.read_csv(latest_file)
+        self.method_labels = {
+            "fastest": "FV (Fastest Vehicle)",
+            "aca": "ACA (Heuristic)",
+            "rl_aca": "RL-ACA (Reinforcement Learning)",
+        }
 
-    def calculate_statistical_significance(self, df: pd.DataFrame) -> Dict:
+    def load_data(self, csv_path: str = None) -> pd.DataFrame:
+        """Load benchmark results data."""
+        if csv_path is None:
+            # Look for both patterns: benchmark_results_*.csv and combined_with_baseline_*.csv
+            csv_files = list(self.results_dir.glob("benchmark_results_*.csv"))
+            combined_files = list(self.results_dir.glob("combined_with_baseline_*.csv"))
+
+            # Combine both file lists
+            all_files = csv_files + combined_files
+
+            if not all_files:
+                raise FileNotFoundError(
+                    "No benchmark results found! Looking for 'benchmark_results_*.csv' or 'combined_with_baseline_*.csv'"
+                )
+            csv_path = max(all_files, key=lambda x: x.stat().st_mtime)
+
+        df = pd.read_csv(csv_path)
+
+        # Handle method name mapping for your specific data
+        method_mapping = {
+            "aca_17": "ACA (Buffer=17)",
+            "fastest_aca": "FV (Fastest Vehicle)",
+            "rl_aca": "RL-ACA (Reinforcement Learning)",
+            "meituan_baseline": "Meituan Baseline",
+            "fastest": "FV (Fastest Vehicle)",
+            "aca": "ACA (Heuristic)",
+        }
+
+        # Add readable method labels
+        df["method_label"] = df["method"].map(method_mapping).fillna(df["method"])
+
+        return df
+
+    def create_performance_comparison_grid(self, df: pd.DataFrame, save_name: str = "performance_grid"):
         """
-        Calculate statistical significance between methods.
-        Performs paired t-tests for key metrics.
+        Create a comprehensive grid comparing all methods across key metrics.
         """
-        from scipy import stats
+        fig, axes = plt.subplots(2, 3, figsize=(18, 12))
+        fig.suptitle("Algorithm Performance Comparison Across All Metrics", fontsize=16, fontweight="bold")
 
-        methods = df["method"].unique()
-        metrics = ["total_delay", "on_time_delivery_rate", "avg_distance_per_order"]
-        significance_results = {}
+        metrics = [
+            ("total_delay", "Total Delay (minutes)", "lower_better"),
+            ("on_time_delivery_rate", "On-Time Delivery Rate (%)", "higher_better"),
+            ("avg_delay_late_orders", "Avg Delay (Late Orders)", "lower_better"),
+            ("max_delay", "Maximum Delay (minutes)", "lower_better"),
+            ("avg_distance_per_order", "Avg Distance per Order (km)", "lower_better"),
+            ("active_period_idle_rate", "Vehicle Idle Rate (%)", "lower_better"),
+        ]
 
-        # Group by dataset (district + day) for paired comparisons
-        dataset_grouped = df.groupby(["district", "day"])
+        for idx, (metric, title, direction) in enumerate(metrics):
+            row, col = idx // 3, idx % 3
+            ax = axes[row, col]
 
-        for metric in metrics:
-            significance_results[metric] = {}
+            # Create violin plot with box plot overlay
+            sns.violinplot(data=df, x="method_label", y=metric, ax=ax, inner=None, alpha=0.6)
+            sns.boxplot(
+                data=df, x="method_label", y=metric, ax=ax, width=0.3, boxprops=dict(alpha=0.7), showfliers=False
+            )
 
-            # Collect paired data for each method combination
-            for i, method1 in enumerate(methods):
-                for method2 in methods[i + 1 :]:
-                    method1_values = []
-                    method2_values = []
+            # Highlight best performing method
+            method_means = df.groupby("method_label")[metric].mean()
+            if direction == "lower_better":
+                best_method = method_means.idxmin()
+                best_color = "lightgreen"
+            else:
+                best_method = method_means.idxmax()
+                best_color = "lightgreen"
 
-                    for (district, day), group in dataset_grouped:
-                        m1_data = group[group["method"] == method1][metric]
-                        m2_data = group[group["method"] == method2][metric]
+            # Add background color for best method
+            best_idx = list(method_means.index).index(best_method)
+            ax.axvspan(best_idx - 0.4, best_idx + 0.4, alpha=0.2, color=best_color)
 
-                        if len(m1_data) > 0 and len(m2_data) > 0:
-                            method1_values.append(m1_data.mean())
-                            method2_values.append(m2_data.mean())
+            ax.set_title(title, fontweight="bold")
+            ax.set_xlabel("")
+            ax.tick_params(axis="x", rotation=45)
 
-                    if len(method1_values) > 2:  # Need at least 3 paired observations
-                        t_stat, p_value = stats.ttest_rel(method1_values, method2_values)
-                        effect_size = (np.mean(method1_values) - np.mean(method2_values)) / np.std(method1_values)
-
-                        significance_results[metric][f"{method1}_vs_{method2}"] = {
-                            "t_statistic": t_stat,
-                            "p_value": p_value,
-                            "is_significant": p_value < 0.05,
-                            "effect_size": effect_size,
-                            "method1_mean": np.mean(method1_values),
-                            "method2_mean": np.mean(method2_values),
-                        }
-
-        return significance_results
-
-    def identify_problematic_datasets(self, df: pd.DataFrame, threshold_percentile: float = 90) -> Dict:
-        """
-        Identify datasets where RL performance is particularly poor.
-        """
-        problematic_datasets = {}
-
-        # Calculate performance gaps for each dataset
-        dataset_performance = []
-
-        for (district, day), group in df.groupby(["district", "day"]):
-            methods_data = {}
-            for method in group["method"].unique():
-                method_data = group[group["method"] == method]
-                methods_data[method] = {
-                    "total_delay": method_data["total_delay"].mean(),
-                    "on_time_delivery_rate": method_data["on_time_delivery_rate"].mean(),
-                }
-
-            # Calculate performance gaps (RL vs best performing method)
-            if "rl_aca" in methods_data and len(methods_data) > 1:
-                rl_delay = methods_data["rl_aca"]["total_delay"]
-                rl_on_time = methods_data["rl_aca"]["on_time_delivery_rate"]
-
-                # Find best performing method (lowest delay)
-                best_delay = min([methods_data[m]["total_delay"] for m in methods_data if m != "rl_aca"])
-                best_on_time = max([methods_data[m]["on_time_delivery_rate"] for m in methods_data if m != "rl_aca"])
-
-                delay_gap = (rl_delay - best_delay) / best_delay * 100  # Percentage worse
-                on_time_gap = best_on_time - rl_on_time  # Percentage points worse
-
-                dataset_performance.append(
-                    {
-                        "district": district,
-                        "day": day,
-                        "delay_gap_percent": delay_gap,
-                        "on_time_gap_points": on_time_gap,
-                        "rl_delay": rl_delay,
-                        "best_delay": best_delay,
-                        "rl_on_time": rl_on_time,
-                        "best_on_time": best_on_time,
-                    }
+            # Add mean value annotations
+            for i, method in enumerate(method_means.index):
+                mean_val = method_means[method]
+                ax.annotate(
+                    f"{mean_val:.1f}",
+                    xy=(i, mean_val),
+                    xytext=(0, 10),
+                    textcoords="offset points",
+                    ha="center",
+                    fontweight="bold",
+                    fontsize=10,
+                    bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8),
                 )
 
-        performance_df = pd.DataFrame(dataset_performance)
+        plt.tight_layout()
+        plt.savefig(self.viz_dir / f"{save_name}.png", dpi=300, bbox_inches="tight")
+        plt.savefig(self.viz_dir / f"{save_name}.pdf", bbox_inches="tight")
+        plt.close()
 
-        # Identify problematic datasets (worst performing percentile)
-        delay_threshold = np.percentile(performance_df["delay_gap_percent"], threshold_percentile)
-        on_time_threshold = np.percentile(performance_df["on_time_gap_points"], threshold_percentile)
-
-        problematic_datasets["worst_delay_performance"] = performance_df[
-            performance_df["delay_gap_percent"] >= delay_threshold
-        ].to_dict("records")
-
-        problematic_datasets["worst_on_time_performance"] = performance_df[
-            performance_df["on_time_gap_points"] >= on_time_threshold
-        ].to_dict("records")
-
-        return problematic_datasets, performance_df
-
-    def detect_unrealistic_results(self, df: pd.DataFrame) -> Dict:
+    def create_performance_radar_chart(self, df: pd.DataFrame, save_name: str = "performance_radar"):
         """
-        Detect potentially unrealistic simulation results using statistical outliers.
+        Create radar chart comparing normalized performance across methods.
         """
-        unrealistic_results = {}
-
-        for metric in ["total_delay", "on_time_delivery_rate", "avg_distance_per_order"]:
-            # Calculate Z-scores for each method
-            method_outliers = {}
-
-            for method in df["method"].unique():
-                method_data = df[df["method"] == method][metric]
-                z_scores = np.abs(stats.zscore(method_data))
-                outlier_threshold = 3  # 3 standard deviations
-
-                outlier_indices = method_data[z_scores > outlier_threshold].index
-                outliers = df.loc[outlier_indices][["district", "day", metric]].to_dict("records")
-
-                if outliers:
-                    method_outliers[method] = outliers
-
-            if method_outliers:
-                unrealistic_results[metric] = method_outliers
-
-        return unrealistic_results
-
-    def generate_performance_report(self, df: pd.DataFrame) -> str:
-        """Generate a comprehensive performance analysis report."""
-
-        # Calculate overall statistics
-        overall_stats = (
-            df.groupby("method")
+        # Calculate mean performance for each method
+        method_stats = (
+            df.groupby("method_label")
             .agg(
                 {
-                    "total_delay": ["mean", "std", "min", "max"],
-                    "on_time_delivery_rate": ["mean", "std", "min", "max"],
-                    "avg_distance_per_order": ["mean", "std", "min", "max"],
+                    "total_delay": "mean",
+                    "on_time_delivery_rate": "mean",
+                    "avg_distance_per_order": "mean",
+                    "max_delay": "mean",
+                    "active_period_idle_rate": "mean",
                 }
             )
             .round(2)
         )
 
-        # Calculate statistical significance
-        significance = self.calculate_statistical_significance(df)
+        # Normalize metrics (0-1 scale, where 1 is best)
+        normalized_stats = method_stats.copy()
 
-        # Identify problematic datasets
-        problematic, performance_df = self.identify_problematic_datasets(df)
+        # For metrics where lower is better, invert the scale
+        lower_better = ["total_delay", "avg_distance_per_order", "max_delay", "active_period_idle_rate"]
+        for metric in lower_better:
+            max_val = method_stats[metric].max()
+            min_val = method_stats[metric].min()
+            # Invert: best (lowest) becomes 1, worst (highest) becomes 0
+            normalized_stats[metric] = (max_val - method_stats[metric]) / (max_val - min_val)
 
-        # Detect unrealistic results
-        unrealistic = self.detect_unrealistic_results(df)
+        # For on_time_delivery_rate, higher is better (normalize normally)
+        metric = "on_time_delivery_rate"
+        max_val = method_stats[metric].max()
+        min_val = method_stats[metric].min()
+        normalized_stats[metric] = (method_stats[metric] - min_val) / (max_val - min_val)
 
-        report = f"""
-# Algorithm Benchmarking Performance Report
-Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+        # Create radar chart
+        labels = ["Low Delay", "High On-Time Rate", "Short Distance", "Low Max Delay", "Low Idle Rate"]
+        num_vars = len(labels)
 
-## Executive Summary
-Total datasets analyzed: {len(df.groupby(['district', 'day']))}
-Methods compared: {', '.join(df['method'].unique())}
+        angles = np.linspace(0, 2 * np.pi, num_vars, endpoint=False).tolist()
+        angles += angles[:1]  # Complete the circle
 
-## Overall Performance Statistics
+        fig, ax = plt.subplots(figsize=(10, 10), subplot_kw=dict(projection="polar"))
 
-### Total Delay (minutes)
-{overall_stats['total_delay'].to_string()}
+        for method in normalized_stats.index:
+            values = normalized_stats.loc[method].tolist()
+            values += values[:1]  # Complete the circle
 
-### On-Time Delivery Rate (%)
-{overall_stats['on_time_delivery_rate'].to_string()}
+            color = self.method_colors.get(method.split(" ")[0].lower(), "#333333")
+            ax.plot(angles, values, "o-", linewidth=2, label=method, color=color)
+            ax.fill(angles, values, alpha=0.25, color=color)
 
-### Average Distance per Order (km)
-{overall_stats['avg_distance_per_order'].to_string()}
+        ax.set_xticks(angles[:-1])
+        ax.set_xticklabels(labels, fontsize=12)
+        ax.set_ylim(0, 1)
+        ax.set_yticks([0.2, 0.4, 0.6, 0.8, 1.0])
+        ax.set_yticklabels(["0.2", "0.4", "0.6", "0.8", "1.0"], fontsize=10)
+        ax.grid(True)
 
-## Statistical Significance Analysis
-"""
+        plt.legend(loc="upper right", bbox_to_anchor=(1.3, 1.0))
+        plt.title("Normalized Performance Comparison\n(1.0 = Best Performance)", fontsize=14, fontweight="bold", pad=20)
 
-        # Add significance results
-        for metric, comparisons in significance.items():
-            report += f"\n### {metric.replace('_', ' ').title()}\n"
-            for comparison, stats in comparisons.items():
-                significance_indicator = "**SIGNIFICANT**" if stats["is_significant"] else "Not significant"
-                report += f"- {comparison}: p={stats['p_value']:.4f} ({significance_indicator})\n"
-                report += f"  Effect size: {stats['effect_size']:.3f}\n"
+        plt.tight_layout()
+        plt.savefig(self.viz_dir / f"{save_name}.png", dpi=300, bbox_inches="tight")
+        plt.savefig(self.viz_dir / f"{save_name}.pdf", bbox_inches="tight")
+        plt.close()
 
-        # Add problematic datasets section
-        report += f"""
-## Problematic Datasets Analysis
+    def create_district_performance_heatmap(
+        self, df: pd.DataFrame, metric: str = "total_delay", save_name: str = "district_heatmap"
+    ):
+        """
+        Create heatmap showing performance across districts for each method.
+        """
+        # Pivot data for heatmap
+        pivot_data = df.pivot_table(values=metric, index="district", columns="method_label", aggfunc="mean")
 
-### Worst RL Performance (Delay)
-Top {len(problematic['worst_delay_performance'])} datasets where RL-ACA performs worst:
-"""
-        for dataset in problematic["worst_delay_performance"][:5]:  # Show top 5
-            report += f"- District {dataset['district']}, Day {dataset['day']}: {dataset['delay_gap_percent']:.1f}% worse delay\n"
+        # Calculate relative performance (percentage difference from best method per district)
+        relative_performance = pivot_data.copy()
+        for district in pivot_data.index:
+            if metric in ["total_delay", "avg_distance_per_order", "max_delay"]:
+                # Lower is better
+                best_val = pivot_data.loc[district].min()
+                relative_performance.loc[district] = (pivot_data.loc[district] - best_val) / best_val * 100
+            else:
+                # Higher is better
+                best_val = pivot_data.loc[district].max()
+                relative_performance.loc[district] = (best_val - pivot_data.loc[district]) / best_val * 100
 
-        report += f"""
-### Worst RL Performance (On-time Rate)
-Top {len(problematic['worst_on_time_performance'])} datasets where RL-ACA performs worst:
-"""
-        for dataset in problematic["worst_on_time_performance"][:5]:
-            report += f"- District {dataset['district']}, Day {dataset['day']}: {dataset['on_time_gap_points']:.1f} percentage points worse\n"
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 8))
 
-        # Add unrealistic results section
-        if unrealistic:
-            report += "\n## Potentially Unrealistic Results (Statistical Outliers)\n"
-            for metric, method_outliers in unrealistic.items():
-                report += f"\n### {metric.replace('_', ' ').title()}\n"
-                for method, outliers in method_outliers.items():
-                    report += f"- {method}: {len(outliers)} outlier(s) detected\n"
+        # Absolute values heatmap
+        sns.heatmap(pivot_data, annot=True, fmt=".1f", cmap="YlOrRd", ax=ax1, cbar_kws={"label": metric})
+        ax1.set_title(f'Absolute {metric.replace("_", " ").title()} by District', fontweight="bold")
+        ax1.set_xlabel("Method")
+        ax1.set_ylabel("District")
 
-        return report
+        # Relative performance heatmap
+        sns.heatmap(
+            relative_performance,
+            annot=True,
+            fmt=".1f",
+            cmap="RdYlGn_r",
+            center=0,
+            ax=ax2,
+            cbar_kws={"label": "% Worse than Best"},
+        )
+        ax2.set_title(f"Relative Performance by District\n(% worse than best method)", fontweight="bold")
+        ax2.set_xlabel("Method")
+        ax2.set_ylabel("")
 
-    def save_analysis_results(self, df: pd.DataFrame):
-        """Save comprehensive analysis results to files."""
+        plt.tight_layout()
+        plt.savefig(self.viz_dir / f"{save_name}_{metric}.png", dpi=300, bbox_inches="tight")
+        plt.savefig(self.viz_dir / f"{save_name}_{metric}.pdf", bbox_inches="tight")
+        plt.close()
 
-        # Generate report
-        report = self.generate_performance_report(df)
+    def create_performance_ranking_chart(self, df: pd.DataFrame, save_name: str = "performance_ranking"):
+        """
+        Create chart showing how often each method ranks 1st, 2nd, 3rd across datasets.
+        """
+        metrics = ["total_delay", "on_time_delivery_rate", "avg_distance_per_order"]
+        metric_titles = ["Total Delay", "On-Time Delivery Rate", "Average Distance"]
+        lower_better = [True, False, True]
 
-        # Save report
-        report_path = self.base_results_dir / f"performance_report_{self.current_timestamp}.md"
-        with open(report_path, "w") as f:
-            f.write(report)
-        logger.info(f"Saved performance report to: {report_path}")
+        fig, axes = plt.subplots(1, 3, figsize=(18, 6))
+        fig.suptitle("Method Rankings Across All Datasets", fontsize=16, fontweight="bold")
 
-        # Save statistical significance results
-        significance = self.calculate_statistical_significance(df)
-        significance_path = self.base_results_dir / f"statistical_significance_{self.current_timestamp}.json"
-        with open(significance_path, "w") as f:
-            json.dump(significance, f, indent=2, default=str)
+        for idx, (metric, title, is_lower_better) in enumerate(zip(metrics, metric_titles, lower_better)):
+            ax = axes[idx]
 
-        # Save problematic datasets
-        problematic, performance_df = self.identify_problematic_datasets(df)
-        problematic_path = self.base_results_dir / f"problematic_datasets_{self.current_timestamp}.json"
-        with open(problematic_path, "w") as f:
-            json.dump(problematic, f, indent=2, default=str)
+            # Calculate rankings for each dataset
+            rankings = []
+            for (district, day), group in df.groupby(["district", "day"]):
+                method_performance = group.groupby("method_label")[metric].mean()
 
-        # Save performance gaps analysis
-        performance_df.to_csv(self.base_results_dir / f"performance_gaps_{self.current_timestamp}.csv", index=False)
+                if is_lower_better:
+                    ranked = method_performance.rank(method="min")
+                else:
+                    ranked = method_performance.rank(method="min", ascending=False)
 
-        return {
-            "report_path": report_path,
-            "significance_path": significance_path,
-            "problematic_path": problematic_path,
-        }
+                for method, rank in ranked.items():
+                    rankings.append({"method": method, "rank": int(rank), "metric": metric})
+
+            rankings_df = pd.DataFrame(rankings)
+
+            # Create stacked bar chart
+            rank_counts = rankings_df.groupby(["method", "rank"]).size().unstack(fill_value=0)
+
+            # Ensure all ranks are present
+            for rank in [1, 2, 3]:
+                if rank not in rank_counts.columns:
+                    rank_counts[rank] = 0
+
+            rank_counts = rank_counts[[1, 2, 3]]  # Ensure order
+
+            # Plot stacked bars
+            rank_counts.plot(
+                kind="bar",
+                stacked=True,
+                ax=ax,
+                color=["#2E8B57", "#DAA520", "#CD853F"],  # Green, Gold, Bronze
+                alpha=0.8,
+            )
+
+            ax.set_title(f"{title}\n(Ranking Distribution)", fontweight="bold")
+            ax.set_xlabel("Method")
+            ax.set_ylabel("Number of Datasets")
+            ax.legend(["1st Place", "2nd Place", "3rd Place"], title="Rank")
+            ax.tick_params(axis="x", rotation=45)
+
+            # Add percentage annotations
+            total_datasets = len(df.groupby(["district", "day"]))
+            for i, method in enumerate(rank_counts.index):
+                first_place_count = rank_counts.loc[method, 1]
+                percentage = (first_place_count / total_datasets) * 100
+                ax.annotate(
+                    f"{percentage:.1f}%",
+                    xy=(i, first_place_count / 2),
+                    ha="center",
+                    va="center",
+                    fontweight="bold",
+                    color="white",
+                )
+
+        plt.tight_layout()
+        plt.savefig(self.viz_dir / f"{save_name}.png", dpi=300, bbox_inches="tight")
+        plt.savefig(self.viz_dir / f"{save_name}.pdf", bbox_inches="tight")
+        plt.close()
+
+    def create_variability_analysis(self, df: pd.DataFrame, save_name: str = "variability_analysis"):
+        """
+        Analyze and visualize performance variability across methods.
+        """
+        fig, axes = plt.subplots(2, 2, figsize=(15, 12))
+        fig.suptitle("Performance Variability Analysis", fontsize=16, fontweight="bold")
+
+        # 1. Coefficient of Variation comparison
+        ax1 = axes[0, 0]
+        cv_data = []
+        for method in df["method_label"].unique():
+            method_data = df[df["method_label"] == method]
+            for metric in ["total_delay", "on_time_delivery_rate"]:
+                cv = method_data[metric].std() / method_data[metric].mean()
+                cv_data.append({"method": method, "metric": metric, "cv": cv})
+
+        cv_df = pd.DataFrame(cv_data)
+        sns.barplot(data=cv_df, x="metric", y="cv", hue="method", ax=ax1)
+        ax1.set_title("Coefficient of Variation\n(Lower = More Consistent)", fontweight="bold")
+        ax1.set_ylabel("Coefficient of Variation")
+        ax1.tick_params(axis="x", rotation=45)
+
+        # 2. Performance spread by district
+        ax2 = axes[0, 1]
+        district_std = df.groupby(["district", "method_label"])["total_delay"].std().reset_index()
+        sns.boxplot(data=district_std, x="method_label", y="total_delay", ax=ax2)
+        ax2.set_title(
+            "Performance Variability Across Districts\n(Standard Deviation of Total Delay)", fontweight="bold"
+        )
+        ax2.set_ylabel("Std Dev of Total Delay")
+        ax2.tick_params(axis="x", rotation=45)
+
+        # 3. Day-to-day consistency
+        ax3 = axes[1, 0]
+        day_performance = df.groupby(["day", "method_label"])["total_delay"].mean().reset_index()
+        for method in df["method_label"].unique():
+            method_data = day_performance[day_performance["method_label"] == method]
+            ax3.plot(method_data["day"], method_data["total_delay"], marker="o", label=method, linewidth=2)
+        ax3.set_title("Day-to-Day Performance Consistency", fontweight="bold")
+        ax3.set_ylabel("Average Total Delay")
+        ax3.set_xlabel("Day")
+        ax3.legend()
+        ax3.tick_params(axis="x", rotation=45)
+
+        # 4. Performance distribution comparison
+        ax4 = axes[1, 1]
+        for method in df["method_label"].unique():
+            method_data = df[df["method_label"] == method]["total_delay"]
+            ax4.hist(method_data, alpha=0.6, label=method, bins=20, density=True)
+        ax4.set_title("Total Delay Distribution", fontweight="bold")
+        ax4.set_xlabel("Total Delay (minutes)")
+        ax4.set_ylabel("Density")
+        ax4.legend()
+
+        plt.tight_layout()
+        plt.savefig(self.viz_dir / f"{save_name}.png", dpi=300, bbox_inches="tight")
+        plt.savefig(self.viz_dir / f"{save_name}.pdf", bbox_inches="tight")
+        plt.close()
+
+    def create_root_cause_analysis_plots(self, df: pd.DataFrame, save_name: str = "root_cause_analysis"):
+        """
+        Create visualizations to help identify root causes of poor RL performance.
+        """
+        fig, axes = plt.subplots(2, 3, figsize=(20, 12))
+        fig.suptitle("Root Cause Analysis: Why is RL-ACA Underperforming?", fontsize=16, fontweight="bold")
+
+        # 1. Performance vs Dataset Size (proxy: total delay)
+        ax1 = axes[0, 0]
+        dataset_complexity = (
+            df.groupby(["district", "day", "method_label"])
+            .agg({"total_delay": "mean", "avg_distance_per_order": "mean"})
+            .reset_index()
+        )
+
+        rl_data = dataset_complexity[dataset_complexity["method_label"].str.contains("RL")]
+        others_data = dataset_complexity[~dataset_complexity["method_label"].str.contains("RL")]
+
+        ax1.scatter(
+            others_data["avg_distance_per_order"],
+            others_data["total_delay"],
+            alpha=0.6,
+            label="Heuristic Methods",
+            s=30,
+        )
+        ax1.scatter(
+            rl_data["avg_distance_per_order"], rl_data["total_delay"], alpha=0.8, label="RL-ACA", s=30, color="red"
+        )
+        ax1.set_xlabel("Average Distance per Order (km)")
+        ax1.set_ylabel("Total Delay (minutes)")
+        ax1.set_title("Performance vs Problem Complexity", fontweight="bold")
+        ax1.legend()
+
+        # 2. Relative performance by district (RL vs best heuristic)
+        ax2 = axes[0, 1]
+        performance_gaps = []
+        for (district, day), group in df.groupby(["district", "day"]):
+            methods_performance = group.groupby("method_label")["total_delay"].mean()
+            if "RL-ACA (Reinforcement Learning)" in methods_performance.index:
+                rl_delay = methods_performance["RL-ACA (Reinforcement Learning)"]
+                heuristic_delays = [v for k, v in methods_performance.items() if "RL" not in k]
+                if heuristic_delays:
+                    best_heuristic = min(heuristic_delays)
+                    gap = (rl_delay - best_heuristic) / best_heuristic * 100
+                    performance_gaps.append({"district": district, "gap": gap})
+
+        gap_df = pd.DataFrame(performance_gaps)
+        if not gap_df.empty:
+            ax2.bar(gap_df["district"], gap_df["gap"], color="orangered", alpha=0.7)
+            ax2.axhline(y=0, color="black", linestyle="--", alpha=0.5)
+            ax2.set_xlabel("District")
+            ax2.set_ylabel("Performance Gap (%)")
+            ax2.set_title("RL Performance Gap by District\n(% worse than best heuristic)", fontweight="bold")
+            ax2.tick_params(axis="x", rotation=45)
+
+        # 3. Method performance correlation matrix
+        ax3 = axes[0, 2]
+        correlation_data = df.pivot_table(
+            values="total_delay", index=["district", "day"], columns="method_label", aggfunc="mean"
+        )
+        if not correlation_data.empty:
+            corr_matrix = correlation_data.corr()
+            sns.heatmap(corr_matrix, annot=True, cmap="coolwarm", center=0, ax=ax3)
+            ax3.set_title("Method Performance Correlation", fontweight="bold")
+
+        # 4. On-time rate vs total delay scatter
+        ax4 = axes[1, 0]
+        for method in df["method_label"].unique():
+            method_data = df[df["method_label"] == method]
+            ax4.scatter(method_data["total_delay"], method_data["on_time_delivery_rate"], alpha=0.6, label=method, s=20)
+        ax4.set_xlabel("Total Delay (minutes)")
+        ax4.set_ylabel("On-Time Delivery Rate (%)")
+        ax4.set_title("Delay vs On-Time Rate Trade-off", fontweight="bold")
+        ax4.legend()
+
+        # 5. Performance trend by day
+        ax5 = axes[1, 1]
+        daily_performance = (
+            df.groupby(["day", "method_label"])
+            .agg({"total_delay": "mean", "on_time_delivery_rate": "mean"})
+            .reset_index()
+        )
+
+        for method in df["method_label"].unique():
+            method_daily = daily_performance[daily_performance["method_label"] == method]
+            ax5.plot(range(len(method_daily)), method_daily["total_delay"], marker="o", label=method, linewidth=2)
+        ax5.set_xlabel("Day (chronological order)")
+        ax5.set_ylabel("Average Total Delay")
+        ax5.set_title("Performance Trends Over Time", fontweight="bold")
+        ax5.legend()
+
+        # 6. Method efficiency comparison (delay per distance)
+        ax6 = axes[1, 2]
+        df["efficiency"] = df["total_delay"] / df["avg_distance_per_order"]
+        efficiency_stats = df.groupby("method_label")["efficiency"].agg(["mean", "std"]).reset_index()
+
+        x_pos = range(len(efficiency_stats))
+        ax6.bar(x_pos, efficiency_stats["mean"], yerr=efficiency_stats["std"], capsize=5, alpha=0.7)
+        ax6.set_xticks(x_pos)
+        ax6.set_xticklabels(efficiency_stats["method_label"], rotation=45)
+        ax6.set_ylabel("Delay per Distance (min/km)")
+        ax6.set_title("Method Efficiency\n(Lower = Better)", fontweight="bold")
+
+        plt.tight_layout()
+        plt.savefig(self.viz_dir / f"{save_name}.png", dpi=300, bbox_inches="tight")
+        plt.savefig(self.viz_dir / f"{save_name}.pdf", bbox_inches="tight")
+        plt.close()
+
+    def create_executive_summary_dashboard(self, df: pd.DataFrame, save_name: str = "executive_dashboard"):
+        """
+        Create a high-level executive summary dashboard.
+        """
+        fig = plt.figure(figsize=(20, 12))
+        gs = fig.add_gridspec(3, 4, hspace=0.3, wspace=0.3)
+
+        # Main title
+        fig.suptitle("Algorithm Benchmarking Executive Dashboard", fontsize=20, fontweight="bold", y=0.95)
+
+        # 1. Overall performance summary (top left, large)
+        ax1 = fig.add_subplot(gs[0:2, 0:2])
+
+        summary_stats = (
+            df.groupby("method_label")
+            .agg({"total_delay": "mean", "on_time_delivery_rate": "mean", "avg_distance_per_order": "mean"})
+            .round(1)
+        )
+
+        # Create performance score (normalized combination of metrics)
+        normalized_summary = summary_stats.copy()
+        normalized_summary["total_delay"] = (summary_stats["total_delay"].max() - summary_stats["total_delay"]) / (
+            summary_stats["total_delay"].max() - summary_stats["total_delay"].min()
+        )
+        normalized_summary["on_time_delivery_rate"] = (
+            summary_stats["on_time_delivery_rate"] - summary_stats["on_time_delivery_rate"].min()
+        ) / (summary_stats["on_time_delivery_rate"].max() - summary_stats["on_time_delivery_rate"].min())
+        normalized_summary["avg_distance_per_order"] = (
+            summary_stats["avg_distance_per_order"].max() - summary_stats["avg_distance_per_order"]
+        ) / (summary_stats["avg_distance_per_order"].max() - summary_stats["avg_distance_per_order"].min())
+
+        normalized_summary["overall_score"] = normalized_summary.mean(axis=1) * 100
+
+        bars = ax1.barh(
+            range(len(normalized_summary)), normalized_summary["overall_score"], color=["#2E86AB", "#A23B72", "#F18F01"]
+        )
+        ax1.set_yticks(range(len(normalized_summary)))
+        ax1.set_yticklabels(normalized_summary.index)
+        ax1.set_xlabel("Overall Performance Score")
+        ax1.set_title("Overall Algorithm Performance\n(Higher = Better)", fontweight="bold", fontsize=14)
+
+        # Add value labels on bars
+        for i, bar in enumerate(bars):
+            width = bar.get_width()
+            ax1.annotate(
+                f"{width:.1f}",
+                xy=(width, bar.get_y() + bar.get_height() / 2),
+                xytext=(3, 0),
+                textcoords="offset points",
+                ha="left",
+                va="center",
+                fontweight="bold",
+            )
+
+        # 2. Key metrics table (top right)
+        ax2 = fig.add_subplot(gs[0, 2:4])
+        ax2.axis("tight")
+        ax2.axis("off")
+
+        table_data = summary_stats.round(1)
+        table = ax2.table(
+            cellText=table_data.values,
+            rowLabels=table_data.index,
+            colLabels=["Avg Delay (min)", "On-Time Rate (%)", "Avg Distance (km)"],
+            cellLoc="center",
+            loc="center",
+        )
+        table.auto_set_font_size(False)
+        table.set_fontsize(10)
+        table.scale(1.2, 1.5)
+        ax2.set_title("Key Performance Metrics", fontweight="bold", fontsize=12, pad=20)
+
+        # 3. Win rate chart (middle right)
+        ax3 = fig.add_subplot(gs[1, 2:4])
+
+        # Calculate win rates
+        win_rates = []
+        total_datasets = len(df.groupby(["district", "day"]))
+
+        for method in df["method_label"].unique():
+            wins = 0
+            for (district, day), group in df.groupby(["district", "day"]):
+                method_performance = group.groupby("method_label")["total_delay"].mean()
+                if method_performance.idxmin() == method:
+                    wins += 1
+            win_rate = (wins / total_datasets) * 100
+            win_rates.append({"method": method, "win_rate": win_rate})
+
+        win_df = pd.DataFrame(win_rates)
+        bars = ax3.bar(range(len(win_df)), win_df["win_rate"], color=["#2E86AB", "#A23B72", "#F18F01"])
+        ax3.set_xticks(range(len(win_df)))
+        ax3.set_xticklabels(win_df["method"], rotation=45)
+        ax3.set_ylabel("Win Rate (%)")
+        ax3.set_title("Dataset Win Rate\n(Best Total Delay)", fontweight="bold")
+
+        # Add value labels
+        for i, bar in enumerate(bars):
+            height = bar.get_height()
+            ax3.annotate(
+                f"{height:.1f}%",
+                xy=(bar.get_x() + bar.get_width() / 2, height),
+                xytext=(0, 3),
+                textcoords="offset points",
+                ha="center",
+                va="bottom",
+                fontweight="bold",
+            )
+
+        # 4. Performance distribution (bottom left)
+        ax4 = fig.add_subplot(gs[2, 0:2])
+
+        df.boxplot(column="total_delay", by="method_label", ax=ax4)
+        ax4.set_title("Total Delay Distribution by Method", fontweight="bold")
+        ax4.set_xlabel("Method")
+        ax4.set_ylabel("Total Delay (minutes)")
+        plt.setp(ax4.xaxis.get_majorticklabels(), rotation=45)
+
+        # 5. Recommendations text box (bottom right)
+        ax5 = fig.add_subplot(gs[2, 2:4])
+        ax5.axis("off")
+
+        # Generate recommendations based on data
+        best_overall = normalized_summary["overall_score"].idxmax()
+        worst_overall = normalized_summary["overall_score"].idxmin()
+        best_delay = summary_stats["total_delay"].idxmin()
+        best_ontime = summary_stats["on_time_delivery_rate"].idxmax()
+
+        recommendations = f"""
+KEY FINDINGS & RECOMMENDATIONS:
+
+✓ Best Overall Performer: {best_overall}
+✗ Needs Improvement: {worst_overall}
+
+SPECIFIC INSIGHTS:
+• Lowest Delay: {best_delay}
+• Best On-Time Rate: {best_ontime}
+• Total Datasets: {total_datasets}
+
+NEXT STEPS:
+1. Investigate RL-ACA training process
+2. Analyze problematic datasets
+3. Consider hybrid approaches
+4. Validate simulation accuracy
+        """
+
+        ax5.text(
+            0.05,
+            0.95,
+            recommendations,
+            transform=ax5.transAxes,
+            fontsize=11,
+            verticalalignment="top",
+            bbox=dict(boxstyle="round", facecolor="lightblue", alpha=0.8),
+        )
+
+        plt.savefig(self.viz_dir / f"{save_name}.png", dpi=300, bbox_inches="tight")
+        plt.savefig(self.viz_dir / f"{save_name}.pdf", bbox_inches="tight")
+        plt.close()
+
+    def generate_all_visualizations(self, df: pd.DataFrame = None):
+        """
+        Generate all visualization types for comprehensive analysis.
+        """
+        if df is None:
+            df = self.load_data()
+
+        print("Generating advanced visualizations...")
+
+        # Generate all visualization types
+        self.create_performance_comparison_grid(df)
+        print("✓ Performance comparison grid created")
+
+        self.create_performance_radar_chart(df)
+        print("✓ Performance radar chart created")
+
+        self.create_district_performance_heatmap(df, "total_delay")
+        self.create_district_performance_heatmap(df, "on_time_delivery_rate")
+        print("✓ District performance heatmaps created")
+
+        self.create_performance_ranking_chart(df)
+        print("✓ Performance ranking chart created")
+
+        self.create_variability_analysis(df)
+        print("✓ Variability analysis created")
+
+        self.create_root_cause_analysis_plots(df)
+        print("✓ Root cause analysis plots created")
+
+        self.create_executive_summary_dashboard(df)
+        print("✓ Executive summary dashboard created")
+
+        print(f"\nAll visualizations saved to: {self.viz_dir}")
+        return self.viz_dir
 
 
 def main():
-    """Main function to run the enhanced pipeline analysis."""
-
-    pipeline = BenchmarkPipeline()
+    """Main function to generate all advanced visualizations."""
+    visualizer = AdvancedBenchmarkVisualizer()
 
     try:
-        # Load latest results
-        df = pipeline.load_latest_results()
-        logger.info(f"Loaded {len(df)} benchmark records")
+        df = visualizer.load_data()
+        print(f"Loaded {len(df)} benchmark records")
 
-        # Run comprehensive analysis
-        analysis_paths = pipeline.save_analysis_results(df)
+        # Generate all visualizations
+        viz_dir = visualizer.generate_all_visualizations(df)
 
-        logger.info("Enhanced pipeline analysis completed!")
-        logger.info(f"Results saved to: {pipeline.base_results_dir}")
-
-        # Print summary
         print("\n" + "=" * 60)
-        print("BENCHMARKING PIPELINE ANALYSIS COMPLETE")
+        print("ADVANCED VISUALIZATION GENERATION COMPLETE")
         print("=" * 60)
-
-        print(f"\nAnalysis files generated:")
-        for description, path in analysis_paths.items():
-            print(f"- {description}: {path}")
-
-        return df, analysis_paths
+        print(f"All charts saved to: {viz_dir}")
+        print("\nGenerated visualizations:")
+        print("- Performance comparison grid")
+        print("- Performance radar chart")
+        print("- District performance heatmaps")
+        print("- Performance ranking charts")
+        print("- Variability analysis")
+        print("- Root cause analysis plots")
+        print("- Executive summary dashboard")
 
     except Exception as e:
-        logger.error(f"Pipeline analysis failed: {e}")
+        print(f"Visualization generation failed: {e}")
         raise
 
 

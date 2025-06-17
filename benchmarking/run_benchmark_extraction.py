@@ -23,7 +23,7 @@ sys.path.append(str(project_root))
 
 # Import our extraction function
 try:
-    from data.extract_meituan_benchmarks import extract_meituan_benchmarks
+    from benchmarking.extract_meituan_benchmarks import extract_meituan_benchmarks
 except ImportError:
     print("Error: Could not import extraction script.")
     print("Make sure 'extract_meituan_benchmarks.py' is in the data/ directory")
