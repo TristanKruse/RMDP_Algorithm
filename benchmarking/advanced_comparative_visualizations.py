@@ -35,18 +35,25 @@ class AdvancedBenchmarkVisualizer:
     def load_data(self, csv_path: str = None) -> pd.DataFrame:
         """Load benchmark results data."""
         if csv_path is None:
-            # Look for both patterns: benchmark_results_*.csv and combined_with_baseline_*.csv
+            # Look for filtered files first, then original files
+            filtered_files = list(self.results_dir.glob("fastest_aca_filtered_results_*.csv"))
             csv_files = list(self.results_dir.glob("benchmark_results_*.csv"))
             combined_files = list(self.results_dir.glob("combined_with_baseline_*.csv"))
 
-            # Combine both file lists
-            all_files = csv_files + combined_files
+            # Prioritize filtered files if they exist
+            if filtered_files:
+                csv_path = max(filtered_files, key=lambda x: x.stat().st_mtime)
+                print(f"📊 Using FILTERED data: {csv_path.name}")
+            else:
+                # Fall back to original files
+                all_files = csv_files + combined_files
 
-            if not all_files:
-                raise FileNotFoundError(
-                    "No benchmark results found! Looking for 'benchmark_results_*.csv' or 'combined_with_baseline_*.csv'"
-                )
-            csv_path = max(all_files, key=lambda x: x.stat().st_mtime)
+                if not all_files:
+                    raise FileNotFoundError(
+                        "No benchmark results found! Looking for 'benchmark_results_*.csv', 'combined_with_baseline_*.csv', or 'fastest_aca_filtered_results_*.csv'"
+                    )
+                csv_path = max(all_files, key=lambda x: x.stat().st_mtime)
+                print(f"📊 Using original data: {csv_path.name}")
 
         df = pd.read_csv(csv_path)
 

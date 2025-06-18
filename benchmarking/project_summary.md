@@ -78,7 +78,47 @@ def calculate_meituan_kpis(waybill_data):
 - **Ground truth comparison**: Real operational performance provides realistic benchmark
 - **Same dataset basis**: Ensures fair comparison using identical demand patterns
 
-### 4. Major Discoveries
+### 4. Data Quality and Filtering
+
+#### 4.1 District Filtering Rationale
+**Problem Identified**: Initial analysis revealed that **all 22 districts** contained negative on-time delivery rates, indicating systematic simulation issues.
+
+**Filtering Strategy Implemented**:
+- **Conservative Approach**: Only remove districts where the **baseline fastest_aca algorithm** shows negative performance
+- **Rationale**: fastest_aca should be the most reliable method; negative rates indicate fundamental simulation bugs
+- **Preservation Principle**: Keep districts with poor but realistic RL performance for meaningful analysis
+
+#### 4.2 Filtering Results
+**Districts Removed (8 out of 22)**:
+- **District 1**: avg=-0.2%, min=-6.2% (fastest_aca performance)
+- **District 2**: avg=-5.3%, min=-11.3%
+- **District 4**: avg=-9.1%, min=-17.5%
+- **District 5**: avg=-10.4%, min=-12.9%
+- **District 9**: avg=-5.3%, min=-14.5%
+- **District 12**: avg=-6.8%, min=-14.2%
+- **District 13**: avg=-7.7%, min=-14.3%
+- **District 22**: avg=-73.0%, min=-79.8% (most problematic)
+
+**Districts Retained (14 out of 22)**:
+- Districts 3, 6, 7, 8, 10, 11, 14, 15, 16, 17, 18, 19, 20, 21
+- **112 district-day combinations** remain for analysis
+- **Realistic baseline performance**: fastest_aca achieves 76.1% on-time rate
+
+#### 4.3 Impact of Filtering
+**Before Filtering**:
+- 22 districts, 176 combinations
+- All methods showing negative rates in multiple districts
+- Impossible simulation results (e.g., -100% on-time rates)
+
+**After Filtering**:
+- 14 clean districts, 112 combinations  
+- Realistic performance ranges for all methods
+- Meaningful performance gaps that can be analyzed
+
+**Data Quality Improvement**:
+- **Simulation Baseline**: 76.1% (fastest_aca) - realistic and analyzable
+- **RL Performance Gap**: 62.5 percentage points below baseline
+- **Meituan Comparison**: 12.8 percentage point gap with real-world performance
 
 #### 4.1 Performance Gap Analysis
 | Method | On-Time Rate | Gap vs Meituan |
@@ -98,7 +138,7 @@ def calculate_meituan_kpis(waybill_data):
 2. **Statistical outliers**: Z-score analysis reveals problematic data points
 3. **Method inconsistencies**: Same dataset producing vastly different results
 
-### 5. Proposed Solutions
+### 6. Proposed Solutions
 
 #### 5.1 RL Algorithm Improvements
 1. **Safety Fallback Mechanism**
@@ -124,7 +164,7 @@ def calculate_meituan_kpis(waybill_data):
    - Implement sanity checks for impossible results
    - Add logging for debugging problematic scenarios
 
-### 6. Implementation Recommendations
+### 7. Implementation Recommendations
 
 #### Short-term Actions
 1. **Implement safety fallback** for RL-ACA immediately
@@ -141,7 +181,7 @@ def calculate_meituan_kpis(waybill_data):
 2. **Advanced RL architectures** with domain-specific constraints
 3. **Multi-objective optimization** balancing multiple KPIs
 
-### 7. Statistical Significance
+### 8. Statistical Significance
 
 #### Methodology
 - **Paired t-tests** between methods on same datasets
@@ -153,7 +193,7 @@ def calculate_meituan_kpis(waybill_data):
 - Large effect sizes confirm practical significance
 - Consistent patterns across different districts and days
 
-### 8. Files and Outputs
+### 9. Files and Outputs
 
 #### Generated Artifacts
 1. **Combined Dataset**: `combined_with_baseline_YYYYMMDD_HHMMSS.csv`
@@ -168,14 +208,14 @@ def calculate_meituan_kpis(waybill_data):
 4. **Ranking Analysis**: Win/loss rates across datasets
 5. **Root Cause Plots**: Diagnostic visualizations for RL issues
 
-### 9. Next Steps
+### 10. Next Steps
 
 1. **Immediate**: Run analysis scripts with filtered data
 2. **This Week**: Implement RL safety fallback mechanism
 3. **Next Sprint**: Investigate simulation accuracy issues
 4. **Ongoing**: Continuous monitoring of algorithm performance
 
-### 10. Technical Notes
+### 11. Technical Notes
 
 #### Dependencies
 - Python 3.8+

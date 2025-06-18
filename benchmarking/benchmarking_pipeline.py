@@ -6,6 +6,7 @@ from datetime import datetime
 from typing import Dict, List, Optional
 import json
 from pathlib import Path
+from scipy import stats  # Add this import at the top
 
 # Configure logging
 logging.basicConfig(
@@ -27,31 +28,67 @@ class BenchmarkPipeline:
         self.base_results_dir.mkdir(parents=True, exist_ok=True)
         self.current_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-    def load_latest_results(self) -> pd.DataFrame:
-        """Load the most recent benchmark results."""
-        # Look for both patterns: benchmark_results_*.csv and combined_with_baseline_*.csv
+    def load_latest_results(self, apply_filtering: bool = True) -> pd.DataFrame:
+        """Load the most recent benchmark results with optional filtering."""
+        # Look for filtered files first, then original files
+        filtered_files = list(self.base_results_dir.glob("fastest_aca_filtered_results_*.csv"))
         csv_files = list(self.base_results_dir.glob("benchmark_results_*.csv"))
         combined_files = list(self.base_results_dir.glob("combined_with_baseline_*.csv"))
 
-        # Combine both file lists
+        # Prioritize filtered files if they exist
+        if filtered_files:
+            latest_file = max(filtered_files, key=lambda x: x.stat().st_mtime)
+            logger.info(f"Loading FILTERED results from: {latest_file}")
+            return pd.read_csv(latest_file)
+
+        # Fall back to original files
         all_files = csv_files + combined_files
 
         if not all_files:
             raise FileNotFoundError(
-                "No benchmark results found! Looking for 'benchmark_results_*.csv' or 'combined_with_baseline_*.csv'"
+                "No benchmark results found! Looking for 'benchmark_results_*.csv', 'combined_with_baseline_*.csv', or 'fastest_aca_filtered_results_*.csv'"
             )
 
         latest_file = max(all_files, key=lambda x: x.stat().st_mtime)
         logger.info(f"Loading results from: {latest_file}")
-        return pd.read_csv(latest_file)
+        df = pd.read_csv(latest_file)
+
+        # Apply basic filtering if requested and no pre-filtered file was found
+        if apply_filtering:
+            logger.info("Applying basic data filtering to remove unrealistic results...")
+            df = self._filter_unrealistic_data(df)
+
+        return df
+
+    def _filter_unrealistic_data(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Apply basic filtering to remove unrealistic results."""
+        initial_count = len(df)
+
+        # Remove impossible on-time rates
+        df = df[(df["on_time_delivery_rate"] >= -10) & (df["on_time_delivery_rate"] <= 105)]
+
+        # Remove extreme delays
+        median_delay = df["total_delay"].median()
+        max_reasonable_delay = median_delay * 10
+        df = df[(df["total_delay"] >= 0) & (df["total_delay"] <= max_reasonable_delay)]
+
+        # Remove RL results with extremely negative performance
+        rl_mask = df["method"].str.contains("rl", case=False, na=False)
+        extreme_negative = (df["on_time_delivery_rate"] < -50) & rl_mask
+        df = df[~extreme_negative]
+
+        removed_count = initial_count - len(df)
+        logger.info(
+            f"Filtered out {removed_count}/{initial_count} unrealistic records ({(removed_count/initial_count)*100:.1f}%)"
+        )
+
+        return df
 
     def calculate_statistical_significance(self, df: pd.DataFrame) -> Dict:
         """
         Calculate statistical significance between methods.
         Performs paired t-tests for key metrics.
         """
-        from scipy import stats
-
         methods = df["method"].unique()
         metrics = ["total_delay", "on_time_delivery_rate", "avg_distance_per_order"]
         significance_results = {}
@@ -137,16 +174,20 @@ class BenchmarkPipeline:
         performance_df = pd.DataFrame(dataset_performance)
 
         # Identify problematic datasets (worst performing percentile)
-        delay_threshold = np.percentile(performance_df["delay_gap_percent"], threshold_percentile)
-        on_time_threshold = np.percentile(performance_df["on_time_gap_points"], threshold_percentile)
+        if len(performance_df) > 0:
+            delay_threshold = np.percentile(performance_df["delay_gap_percent"], threshold_percentile)
+            on_time_threshold = np.percentile(performance_df["on_time_gap_points"], threshold_percentile)
 
-        problematic_datasets["worst_delay_performance"] = performance_df[
-            performance_df["delay_gap_percent"] >= delay_threshold
-        ].to_dict("records")
+            problematic_datasets["worst_delay_performance"] = performance_df[
+                performance_df["delay_gap_percent"] >= delay_threshold
+            ].to_dict("records")
 
-        problematic_datasets["worst_on_time_performance"] = performance_df[
-            performance_df["on_time_gap_points"] >= on_time_threshold
-        ].to_dict("records")
+            problematic_datasets["worst_on_time_performance"] = performance_df[
+                performance_df["on_time_gap_points"] >= on_time_threshold
+            ].to_dict("records")
+        else:
+            problematic_datasets["worst_delay_performance"] = []
+            problematic_datasets["worst_on_time_performance"] = []
 
         return problematic_datasets, performance_df
 
@@ -157,11 +198,20 @@ class BenchmarkPipeline:
         unrealistic_results = {}
 
         for metric in ["total_delay", "on_time_delivery_rate", "avg_distance_per_order"]:
+            # Skip if metric doesn't exist
+            if metric not in df.columns:
+                continue
+
             # Calculate Z-scores for each method
             method_outliers = {}
 
             for method in df["method"].unique():
                 method_data = df[df["method"] == method][metric]
+
+                # Skip if not enough data points
+                if len(method_data) < 3:
+                    continue
+
                 z_scores = np.abs(stats.zscore(method_data))
                 outlier_threshold = 3  # 3 standard deviations
 
@@ -202,11 +252,12 @@ class BenchmarkPipeline:
         unrealistic = self.detect_unrealistic_results(df)
 
         report = f"""
-# Algorithm Benchmarking Performance Report
+# Algorithm Benchmarking Performance Report (FILTERED DATA)
 Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 
 ## Executive Summary
 Total datasets analyzed: {len(df.groupby(['district', 'day']))}
+Districts included: {df['district'].nunique()} (after filtering)
 Methods compared: {', '.join(df['method'].unique())}
 
 ## Overall Performance Statistics
@@ -220,33 +271,50 @@ Methods compared: {', '.join(df['method'].unique())}
 ### Average Distance per Order (km)
 {overall_stats['avg_distance_per_order'].to_string()}
 
-## Statistical Significance Analysis
+## Key Performance Gaps
+
 """
+
+        # Add performance comparison
+        method_means = df.groupby("method")["on_time_delivery_rate"].mean().sort_values(ascending=False)
+        report += "### On-Time Delivery Rate Ranking\n"
+        for i, (method, rate) in enumerate(method_means.items(), 1):
+            report += f"{i}. **{method}**: {rate:.1f}%\n"
+
+        if "meituan_baseline" in method_means.index and "rl_aca" in method_means.index:
+            baseline_rate = method_means["meituan_baseline"]
+            rl_rate = method_means["rl_aca"]
+            gap = baseline_rate - rl_rate
+            report += f"\n**RL-ACA vs Meituan Gap**: {gap:.1f} percentage points\n"
+
+        report += "\n## Statistical Significance Analysis\n"
 
         # Add significance results
         for metric, comparisons in significance.items():
             report += f"\n### {metric.replace('_', ' ').title()}\n"
-            for comparison, stats in comparisons.items():
-                significance_indicator = "**SIGNIFICANT**" if stats["is_significant"] else "Not significant"
-                report += f"- {comparison}: p={stats['p_value']:.4f} ({significance_indicator})\n"
-                report += f"  Effect size: {stats['effect_size']:.3f}\n"
+            for comparison, stats_data in comparisons.items():
+                significance_indicator = "**SIGNIFICANT**" if stats_data["is_significant"] else "Not significant"
+                report += f"- {comparison}: p={stats_data['p_value']:.4f} ({significance_indicator})\n"
+                report += f"  Effect size: {stats_data['effect_size']:.3f}\n"
 
         # Add problematic datasets section
-        report += f"""
+        if len(problematic["worst_delay_performance"]) > 0:
+            report += f"""
 ## Problematic Datasets Analysis
 
 ### Worst RL Performance (Delay)
-Top {len(problematic['worst_delay_performance'])} datasets where RL-ACA performs worst:
+Top {min(5, len(problematic['worst_delay_performance']))} datasets where RL-ACA performs worst:
 """
-        for dataset in problematic["worst_delay_performance"][:5]:  # Show top 5
-            report += f"- District {dataset['district']}, Day {dataset['day']}: {dataset['delay_gap_percent']:.1f}% worse delay\n"
+            for dataset in problematic["worst_delay_performance"][:5]:  # Show top 5
+                report += f"- District {dataset['district']}, Day {dataset['day']}: {dataset['delay_gap_percent']:.1f}% worse delay\n"
 
-        report += f"""
+        if len(problematic["worst_on_time_performance"]) > 0:
+            report += f"""
 ### Worst RL Performance (On-time Rate)
-Top {len(problematic['worst_on_time_performance'])} datasets where RL-ACA performs worst:
+Top {min(5, len(problematic['worst_on_time_performance']))} datasets where RL-ACA performs worst:
 """
-        for dataset in problematic["worst_on_time_performance"][:5]:
-            report += f"- District {dataset['district']}, Day {dataset['day']}: {dataset['on_time_gap_points']:.1f} percentage points worse\n"
+            for dataset in problematic["worst_on_time_performance"][:5]:
+                report += f"- District {dataset['district']}, Day {dataset['day']}: {dataset['on_time_gap_points']:.1f} percentage points worse\n"
 
         # Add unrealistic results section
         if unrealistic:
@@ -283,7 +351,8 @@ Top {len(problematic['worst_on_time_performance'])} datasets where RL-ACA perfor
             json.dump(problematic, f, indent=2, default=str)
 
         # Save performance gaps analysis
-        performance_df.to_csv(self.base_results_dir / f"performance_gaps_{self.current_timestamp}.csv", index=False)
+        if len(performance_df) > 0:
+            performance_df.to_csv(self.base_results_dir / f"performance_gaps_{self.current_timestamp}.csv", index=False)
 
         return {
             "report_path": report_path,
@@ -302,6 +371,14 @@ def main():
         df = pipeline.load_latest_results()
         logger.info(f"Loaded {len(df)} benchmark records")
 
+        # Print quick summary
+        print(f"\n📊 DATA SUMMARY")
+        print("=" * 40)
+        print(f"Records: {len(df)}")
+        print(f"Districts: {df['district'].nunique()}")
+        print(f"Methods: {', '.join(df['method'].unique())}")
+        print(f"District-Day combinations: {len(df.groupby(['district', 'day']))}")
+
         # Run comprehensive analysis
         analysis_paths = pipeline.save_analysis_results(df)
 
@@ -316,6 +393,13 @@ def main():
         print(f"\nAnalysis files generated:")
         for description, path in analysis_paths.items():
             print(f"- {description}: {path}")
+
+        # Quick performance summary
+        print(f"\n📈 QUICK PERFORMANCE SUMMARY")
+        print("=" * 40)
+        method_means = df.groupby("method")["on_time_delivery_rate"].mean().sort_values(ascending=False)
+        for method, rate in method_means.items():
+            print(f"{method:20s}: {rate:6.1f}%")
 
         return df, analysis_paths
 
