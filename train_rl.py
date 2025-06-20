@@ -79,6 +79,7 @@ def train_rl_aca(
         "on_time_rates": [],
         "postponement_rates": [],
         "losses": [],  # Add a list to track average loss per episode
+        "exploration_rates": [],  # Track exploration rate for each episode
     }
 
     # Initialize exploration rate at the start
@@ -151,16 +152,30 @@ def train_rl_aca(
                 else:
                     logger.info(f"Using model: {latest_model_path}")
 
-                # Update exploration rate based on selected decay method (continuous across phases)
-                if decay_method == "linear":
-                    progress = total_completed_episodes / max_total_episodes
-                    current_exploration_rate = max(
-                        exploration_end, exploration_start - (exploration_start - exploration_end) * progress
-                    )
-                elif decay_method == "exponential":
-                    # If this is not the first episode, apply exponential decay
-                    if current_phase_idx > 0 or episode_in_phase > 0:
-                        current_exploration_rate = max(exploration_end, current_exploration_rate * decay_rate)
+                # Phase-specific exploration rate management for curriculum learning
+                # Reset exploration rate at the start of each new phase
+                if episode_in_phase == 0:
+                    current_exploration_rate = exploration_start  # Reset to initial rate (0.9)
+                    logger.info(f"Phase {current_phase_idx + 1} started - Reset exploration rate to {current_exploration_rate:.3f}")
+                else:
+                    # Phase-specific decay rates: slower for simple phases, faster for complex phases
+                    phase_decay_rates = {
+                        0: 0.999,  # Phase 1: Simple (1 vehicle, 2 restaurants) - very slow decay
+                        1: 0.999,  # Phase 2: Intermediate (10 vehicles, 20 restaurants) - slow decay  
+                        2: 0.95,   # Phase 3: Bridge (40 vehicles, 80 restaurants) - fast decay
+                        3: 0.95    # Phase 4: Full (160 vehicles, 320 restaurants) - fast decay
+                    }
+                    
+                    current_decay_rate = phase_decay_rates.get(current_phase_idx, decay_rate)
+                    
+                    # Update exploration rate based on selected decay method (within each phase)
+                    if decay_method == "linear":
+                        phase_progress = episode_in_phase / max_episodes
+                        current_exploration_rate = max(
+                            exploration_end, exploration_start - (exploration_start - exploration_end) * phase_progress
+                        )
+                    elif decay_method == "exponential":
+                        current_exploration_rate = max(exploration_end, current_exploration_rate * current_decay_rate)
 
                 # Run test episode - always save to the same latest model path, using the same solver
                 stats = run_test_episode(
@@ -209,6 +224,7 @@ def train_rl_aca(
                 all_metrics["delays"].append(delay)
                 all_metrics["on_time_rates"].append(on_time_rate)
                 all_metrics["postponement_rates"].append(postponement_rate)
+                all_metrics["exploration_rates"].append(current_exploration_rate)
 
                 # Extract the average loss for this episode and append to all_metrics["losses"]
                 try:
@@ -227,7 +243,7 @@ def train_rl_aca(
                     logger.warning(f"Failed to extract losses: {e}")
                     all_metrics["losses"].append(0.0)  # Fallback in case of error
 
-                # Plot losses at save intervals, overwriting the same file
+                # Plot losses and exploration vs performance at save intervals
                 if (episode_in_phase + 1) % save_interval == 0:
                     loss_plot_path = os.path.join(phase_dir, "loss_plot.png")  # Single file, overwritten
                     plot_losses(
@@ -239,21 +255,36 @@ def train_rl_aca(
                         total_steps=len(all_metrics["losses"]),  # Now represents the number of episodes
                     )
                     logger.info(f"Updated loss plot at {loss_plot_path}")
+                    
+                    # Plot exploration vs performance
+                    exploration_plot_path = os.path.join(phase_dir, "exploration_vs_performance.png")
+                    plot_exploration_vs_performance(
+                        all_metrics, phases, save_path=exploration_plot_path,
+                        current_phase=current_phase_idx, current_episode=len(all_metrics["rewards"])
+                    )
+                    logger.info(f"Updated exploration vs performance plot at {exploration_plot_path}")
 
+                # Calculate enhanced metrics for progress bar
+                capacity_utilization = (stats['total_orders'] / max(1, current_phase["env_config"]["num_vehicles"])) if current_phase else 0
+                undelivered_orders = stats['total_orders'] - stats['orders_delivered']
+                completion_rate = (stats['orders_delivered'] / max(1, stats['total_orders'])) * 100
+                
+                # Calculate average episode performance over last 10 episodes for trend
+                recent_rewards = phase_metrics["rewards"][-min(10, len(phase_metrics["rewards"])):]
+                avg_recent_reward = sum(recent_rewards) / len(recent_rewards) if recent_rewards else reward
+                reward_trend = "↗" if len(recent_rewards) >= 2 and recent_rewards[-1] > recent_rewards[0] else "↘" if len(recent_rewards) >= 2 and recent_rewards[-1] < recent_rewards[0] else "→"
+                
                 pbar.set_postfix(
                     {
-                        "rew": f"{reward:.1f}".ljust(7),  # Shortened to 'rew', reduced precision and padding
-                        "ot": f"{on_time_rate:.0f}%".ljust(5),  # Shortened to 'ot', removed decimal, reduced padding
-                        "del": f"{delay:.0f}".ljust(5),  # Shortened to 'del', removed decimal, reduced padding
-                        "sd": f"{seed + episode_in_phase}".ljust(4),  # Show actual seed being used
-                        "exp": f"{current_exploration_rate:.2f}".ljust(
-                            6
-                        ),  # Shortened to 'exp', reduced precision and padding
-                        "post": f"{postponement_rate:.0f}%".ljust(
-                            6
-                        ),  # Shortened to 'post', removed decimal, reduced padding
-                        "tot": f"{stats['total_orders']}".ljust(4),  # Shortened to 'tot', reduced padding
-                        "deliv": f"{stats['orders_delivered']}".ljust(5),  # Shortened to 'deliv', reduced padding
+                        "rew": f"{reward:.0f}".ljust(5),  # Current episode reward
+                        "avg": f"{avg_recent_reward:.0f}{reward_trend}".ljust(6),  # Average recent reward with trend
+                        "ot": f"{on_time_rate:.0f}%".ljust(4),  # On-time rate
+                        "comp": f"{completion_rate:.0f}%".ljust(4),  # Completion rate (delivered/total)
+                        "undel": f"{undelivered_orders}".ljust(4),  # Undelivered orders
+                        "post": f"{postponement_rate:.0f}%".ljust(4),  # Postponement rate
+                        "cap": f"{capacity_utilization:.1f}".ljust(4),  # Orders per vehicle (capacity utilization)
+                        "exp": f"{current_exploration_rate:.2f}".ljust(5),  # Exploration rate
+                        "loss": f"{all_metrics['losses'][-1]:.3f}" if all_metrics['losses'] else "0.000".ljust(6),  # Latest loss
                     }
                 )
                 pbar.update(1)
@@ -324,6 +355,12 @@ def train_rl_aca(
                         logger.info(f"Phase {current_phase_idx + 1} final model saved to {phase_final_path}")
                     except Exception as e:
                         logger.error(f"Failed to create final model: {e}")
+
+                    # Generate comprehensive phase summary report
+                    generate_phase_summary_report(
+                        phase_metrics, current_phase_idx, phase_name, episode_in_phase + 1, 
+                        current_phase["env_config"], current_exploration_rate, all_metrics
+                    )
 
                     # Plot phase results
                     plot_phase_results(phase_metrics, current_phase_idx, phase_name, phase_dir, timestamp)
@@ -600,6 +637,158 @@ def plot_training_results(metrics, phases, output_dir, timestamp):
     plt.close()
 
 
+def plot_exploration_vs_performance(all_metrics, phases, save_path, current_phase, current_episode):
+    """
+    Plot exploration rate vs performance metrics over time.
+    """
+    import matplotlib.pyplot as plt
+    import numpy as np
+    
+    if len(all_metrics["rewards"]) < 5:  # Not enough data to plot
+        return
+        
+    episodes = np.arange(len(all_metrics["rewards"]))
+    
+    fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(15, 10))
+    
+    # Plot 1: Exploration Rate over Time
+    ax1.plot(episodes, all_metrics["exploration_rates"], 'b-', linewidth=2, label='Exploration Rate')
+    ax1.set_xlabel('Episode')
+    ax1.set_ylabel('Exploration Rate')
+    ax1.set_title('Exploration Rate Decay Over Training')
+    ax1.grid(True, alpha=0.3)
+    ax1.legend()
+    
+    # Add phase transition lines
+    for i, transition in enumerate(all_metrics["phase_transitions"]):
+        ax1.axvline(x=transition, color='red', linestyle='--', alpha=0.7)
+        ax1.text(transition, ax1.get_ylim()[1] * 0.9, f'P{i+2}', rotation=90, 
+                verticalalignment='top', fontsize=8)
+    
+    # Plot 2: Rewards vs Exploration Rate (scatter)
+    ax2.scatter(all_metrics["exploration_rates"], all_metrics["rewards"], 
+               c=episodes, cmap='viridis', alpha=0.6, s=20)
+    ax2.set_xlabel('Exploration Rate')
+    ax2.set_ylabel('Reward')
+    ax2.set_title('Reward vs Exploration Rate')
+    ax2.grid(True, alpha=0.3)
+    cbar = plt.colorbar(ax2.collections[0], ax=ax2)
+    cbar.set_label('Episode')
+    
+    # Plot 3: Moving Average Performance
+    window = min(50, len(all_metrics["rewards"]) // 4)
+    if window > 1:
+        moving_avg_rewards = []
+        moving_avg_exploration = []
+        for i in range(window-1, len(all_metrics["rewards"])):
+            moving_avg_rewards.append(np.mean(all_metrics["rewards"][i-window+1:i+1]))
+            moving_avg_exploration.append(np.mean(all_metrics["exploration_rates"][i-window+1:i+1]))
+        
+        episodes_ma = episodes[window-1:]
+        ax3.plot(episodes_ma, moving_avg_rewards, 'g-', linewidth=2, label=f'{window}-Episode MA Reward')
+        ax3_twin = ax3.twinx()
+        ax3_twin.plot(episodes_ma, moving_avg_exploration, 'r--', linewidth=2, alpha=0.7, label=f'{window}-Episode MA Exploration')
+        
+        ax3.set_xlabel('Episode')
+        ax3.set_ylabel('Reward (Moving Average)', color='g')
+        ax3_twin.set_ylabel('Exploration Rate (Moving Average)', color='r')
+        ax3.set_title(f'Performance vs Exploration Trends ({window}-Episode MA)')
+        ax3.grid(True, alpha=0.3)
+        
+        # Add phase transitions
+        for transition in all_metrics["phase_transitions"]:
+            ax3.axvline(x=transition, color='black', linestyle='--', alpha=0.5)
+    
+    # Plot 4: On-Time Rate vs Exploration
+    ax4.scatter(all_metrics["exploration_rates"], all_metrics["on_time_rates"], 
+               c=episodes, cmap='plasma', alpha=0.6, s=20)
+    ax4.set_xlabel('Exploration Rate')
+    ax4.set_ylabel('On-Time Rate (%)')
+    ax4.set_title('On-Time Rate vs Exploration Rate')
+    ax4.grid(True, alpha=0.3)
+    cbar4 = plt.colorbar(ax4.collections[0], ax=ax4)
+    cbar4.set_label('Episode')
+    
+    plt.suptitle(f'Exploration vs Performance Analysis\n(Phase {current_phase+1}, Episode {current_episode})', fontsize=14)
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=300, bbox_inches='tight')
+    plt.close()
+
+
+def generate_phase_summary_report(phase_metrics, phase_idx, phase_name, episodes_completed, env_config, final_exploration_rate, all_metrics):
+    """Generate comprehensive phase summary report with performance analysis."""
+    
+    logger.info("\n" + "=" * 80)
+    logger.info(f"PHASE {phase_idx + 1} COMPLETION SUMMARY: {phase_name}")
+    logger.info("=" * 80)
+    
+    # Basic phase info
+    logger.info(f"Episodes Completed: {episodes_completed}")
+    logger.info(f"Environment Configuration:")
+    logger.info(f"  - Vehicles: {env_config.get('num_vehicles', 'N/A')}")
+    logger.info(f"  - Restaurants: {env_config.get('num_restaurants', 'N/A')}")
+    logger.info(f"  - Order Interval: {env_config.get('mean_interarrival_time', 'N/A')} min")
+    logger.info(f"  - Final Exploration Rate: {final_exploration_rate:.3f}")
+    
+    # Performance statistics
+    avg_reward = np.mean(phase_metrics["rewards"])
+    avg_delay = np.mean(phase_metrics["delays"])
+    avg_on_time = np.mean(phase_metrics["on_time_rates"])
+    avg_postponement = np.mean(phase_metrics["postponement_rates"])
+    
+    # Performance trends (first 10 vs last 10 episodes)
+    early_rewards = phase_metrics["rewards"][:min(10, len(phase_metrics["rewards"]))]
+    late_rewards = phase_metrics["rewards"][-min(10, len(phase_metrics["rewards"])):]
+    reward_improvement = np.mean(late_rewards) - np.mean(early_rewards) if len(early_rewards) > 0 and len(late_rewards) > 0 else 0
+    
+    early_on_time = phase_metrics["on_time_rates"][:min(10, len(phase_metrics["on_time_rates"]))]
+    late_on_time = phase_metrics["on_time_rates"][-min(10, len(phase_metrics["on_time_rates"])):]
+    on_time_improvement = np.mean(late_on_time) - np.mean(early_on_time) if len(early_on_time) > 0 and len(late_on_time) > 0 else 0
+    
+    logger.info(f"\nPerformance Metrics:")
+    logger.info(f"  - Average Reward: {avg_reward:.2f}")
+    logger.info(f"  - Average Delay: {avg_delay:.2f} minutes")
+    logger.info(f"  - Average On-Time Rate: {avg_on_time:.1f}%")
+    logger.info(f"  - Average Postponement Rate: {avg_postponement:.1f}%")
+    
+    logger.info(f"\nLearning Progress (First 10 vs Last 10 episodes):")
+    logger.info(f"  - Reward Improvement: {reward_improvement:+.2f} ({reward_improvement/abs(np.mean(early_rewards))*100:+.1f}% change)" if early_rewards else "  - Reward Improvement: N/A")
+    logger.info(f"  - On-Time Rate Improvement: {on_time_improvement:+.1f}pp" if early_on_time else "  - On-Time Rate Improvement: N/A")
+    
+    # Phase comparison (if not first phase)
+    if phase_idx > 0 and len(all_metrics["phase_transitions"]) > 0:
+        prev_phase_start = all_metrics["phase_transitions"][-2] if len(all_metrics["phase_transitions"]) > 1 else 0
+        prev_phase_end = all_metrics["phase_transitions"][-1]
+        prev_avg_reward = np.mean(all_metrics["rewards"][prev_phase_start:prev_phase_end])
+        prev_avg_on_time = np.mean(all_metrics["on_time_rates"][prev_phase_start:prev_phase_end])
+        
+        logger.info(f"\nPhase-to-Phase Comparison:")
+        logger.info(f"  - Reward vs Previous Phase: {avg_reward - prev_avg_reward:+.2f} ({((avg_reward - prev_avg_reward)/abs(prev_avg_reward)*100):+.1f}%)")
+        logger.info(f"  - On-Time Rate vs Previous Phase: {avg_on_time - prev_avg_on_time:+.1f}pp")
+    
+    # Learning insights
+    reward_std = np.std(phase_metrics["rewards"])
+    on_time_std = np.std(phase_metrics["on_time_rates"])
+    
+    logger.info(f"\nStability Metrics:")
+    logger.info(f"  - Reward Stability (std): {reward_std:.2f}")
+    logger.info(f"  - On-Time Rate Stability (std): {on_time_std:.1f}%")
+    
+    # Learning recommendations for next phase
+    if phase_idx < 3:  # Not the final phase
+        if reward_improvement > 0:
+            logger.info(f"\n✅ Phase Learning: SUCCESSFUL - Model shows positive improvement")
+        else:
+            logger.info(f"\n⚠️  Phase Learning: CONCERNING - Model shows declining performance")
+            
+        if final_exploration_rate < 0.1:
+            logger.info(f"✅ Exploration: ADEQUATE - Reached low exploration ({final_exploration_rate:.3f})")
+        else:
+            logger.info(f"⚠️  Exploration: HIGH - Still exploring heavily ({final_exploration_rate:.3f})")
+    
+    logger.info("=" * 80 + "\n")
+
+
 def find_latest_model(model_dir="data/models"):
     """Find the latest phased training model and its resume information."""
     if not os.path.exists(model_dir):
@@ -761,6 +950,41 @@ def compare_models(
 
     # Use default environment if none provided
     env_params = env_config or {}
+
+    # Get complete environment configuration for logging
+    from training.config.env_config import get_env_config
+
+    speed = 16  # km/h (same as used in training)
+    street_network_factor = 1.0
+    movement_per_step = (speed / 60) / street_network_factor
+
+    # Get base config and merge with provided env_params
+    base_config = get_env_config(movement_per_step)
+    final_config = {**base_config, **env_params}
+
+    # Log environment configuration
+    logger.info("\n" + "=" * 60)
+    logger.info("COMPARISON ENVIRONMENT CONFIGURATION")
+    logger.info("=" * 60)
+    logger.info(f"System Configuration:")
+    logger.info(f"  - Vehicles: {final_config.get('num_vehicles', 'N/A')}")
+    logger.info(f"  - Restaurants: {final_config.get('num_restaurants', 'N/A')}")
+    logger.info(f"  - Service Area: {final_config.get('service_area_dimensions', 'N/A')} km")
+    logger.info(f"  - Downtown Concentration: {final_config.get('downtown_concentration', 'N/A')}")
+    logger.info(f"\nWorkload Configuration:")
+    logger.info(f"  - Mean Interarrival Time: {final_config.get('mean_interarrival_time', 'N/A')} minutes")
+    logger.info(f"  - Simulation Duration: {final_config.get('simulation_duration', 'N/A')} minutes")
+    logger.info(f"  - Cooldown Duration: {final_config.get('cooldown_duration', 'N/A')} minutes")
+    logger.info(f"\nService Configuration:")
+    logger.info(f"  - Mean Prep Time: {final_config.get('mean_prep_time', 'N/A')} minutes")
+    logger.info(f"  - Prep Time Variance: {final_config.get('prep_time_var', 'N/A')}")
+    logger.info(f"  - Delivery Window: {final_config.get('delivery_window', 'N/A')} minutes")
+    logger.info(f"  - Service Time: {final_config.get('service_time', 'N/A')} minutes")
+    logger.info(f"\nComparison Episodes:")
+    logger.info(f"  - Heuristic ACA Episodes: {heuristic_episodes}")
+    logger.info(f"  - RL-based ACA Episodes: {rl_episodes}")
+    logger.info(f"  - Starting Seed: {seed}")
+    logger.info("=" * 60 + "\n")
 
     # Run heuristic ACA episodes
     heuristic_metrics = {
@@ -1184,8 +1408,23 @@ def define_training_phases():
             },
             "min_episodes": 5000,  # 30, 100
             "max_episodes": 5000,  # Substantial training in intermediate complexity
-        },  # ,
-        # Phase 3: Full Environment
+        },
+        # Phase 3: Bridge Environment
+        {
+            "name": "Bridge Environment",
+            "env_config": {
+                "num_vehicles": 40,  # Bridge between 10 and 160
+                "num_restaurants": 80,  # Bridge between 20 and 320
+                "service_area_dimensions": (6.0, 6.0),  # Same area
+                "mean_interarrival_time": 2,  # Bridge between 8 and 0.65
+            },
+            "performance_criteria": {
+                # No performance criteria - phase will run until max_episodes
+            },
+            "min_episodes": 200,  # Moderate training for bridge complexity
+            "max_episodes": 200,
+        },
+        # Phase 4: Full Environment
         {
             "name": "Full Environment",
             "env_config": {
@@ -1197,8 +1436,8 @@ def define_training_phases():
             "performance_criteria": {
                 # No performance criteria - phase will run until max_episodes
             },
-            "min_episodes": 100,  # 50, 300
-            "max_episodes": 100,  # Extensive training in full complexity
+            "min_episodes": 200,  # Increased from 100 for better convergence
+            "max_episodes": 200,  # Extended training in full complexity
         },
     ]
 
@@ -1267,9 +1506,11 @@ if __name__ == "__main__":
         env_config = phases[-1]["env_config"]
 
         logger.info(f"Comparing models using existing model at: {model_path}")
+
+        # Also when compare only then change the number of episodes here.
         compare_models(
-            heuristic_episodes=100,
-            rl_episodes=100,
+            heuristic_episodes=10,
+            rl_episodes=10,
             rl_model_path=model_path,
             seed=seed,
             visualize=args.visualize,
@@ -1297,31 +1538,46 @@ if __name__ == "__main__":
             phase = 0
             episode = 0
 
+        # Define hyperparameters to use for training
+        training_save_interval = 100
+        training_reposition_idle_vehicles = True
+        training_model_dir = "data/models"
+        training_decay_rate = 0.99
+        training_rl_learning_rate = 0.0005
+        training_rl_batch_size = 32
+        training_rl_target_update_frequency = 25
+        training_rl_discount_factor = 0.95
+        training_exploration_end = 0.05
+        training_rl_bundling_reward = 5.0
+        training_rl_postponement_penalty = 0.0
+        training_rl_on_time_reward = 0.0
+        training_rl_replay_buffer_capacity = 10000  # Default from function signature
+
         # Run phased training
         final_model_path = train_rl_aca(
             phases=phases,
-            save_interval=100,
+            save_interval=training_save_interval,
             stability_window=args.stability_window,
             stability_threshold=args.stability_threshold,
             seed=seed,
             visualize=args.visualize,
-            reposition_idle_vehicles=True,
-            model_dir="data/models",
+            reposition_idle_vehicles=training_reposition_idle_vehicles,
+            model_dir=training_model_dir,
             resume_from_model=latest_model if resume else None,
             start_phase=phase if resume else 0,
             start_episode=episode if resume else 0,
             exploration_start=args.initial_exploration,
             decay_method=args.decay_method,
             # Tuned RL hyperparameters
-            decay_rate=0.99,
-            rl_learning_rate=0.0005,
-            rl_batch_size=32,
-            rl_target_update_frequency=25,
-            rl_discount_factor=0.95,
-            exploration_end=0.05,
-            rl_bundling_reward=5.0,
-            rl_postponement_penalty=0.0,  # -0.05
-            rl_on_time_reward=0.0,
+            decay_rate=training_decay_rate,
+            rl_learning_rate=training_rl_learning_rate,
+            rl_batch_size=training_rl_batch_size,
+            rl_target_update_frequency=training_rl_target_update_frequency,
+            rl_discount_factor=training_rl_discount_factor,
+            exploration_end=training_exploration_end,
+            rl_bundling_reward=training_rl_bundling_reward,
+            rl_postponement_penalty=training_rl_postponement_penalty,
+            rl_on_time_reward=training_rl_on_time_reward,
         )
 
         # Always compare after training, unless explicitly turned off
@@ -1340,30 +1596,48 @@ if __name__ == "__main__":
     logger.info("Final Training Hyperparameters:")
     logger.info("=" * 50)
     logger.info(f"Training Configuration:")
-    logger.info(f"  - Save Interval: {args.save_interval}")
+    logger.info(f"  - Save Interval: {training_save_interval if not args.compare_only else 'N/A (compare-only mode)'}")
     logger.info(f"  - Stability Window: {args.stability_window}")
     logger.info(f"  - Stability Threshold: {args.stability_threshold}")
     logger.info(f"  - Seed: {seed}")
-    logger.info(f"  - Model Directory: data/models")
-    logger.info(f"  - Reposition Idle Vehicles: True")
+    logger.info(f"  - Model Directory: {training_model_dir if not args.compare_only else 'N/A (compare-only mode)'}")
+    logger.info(
+        f"  - Reposition Idle Vehicles: {training_reposition_idle_vehicles if not args.compare_only else 'N/A (compare-only mode)'}"
+    )
 
     logger.info("\nExploration Parameters:")
     logger.info(f"  - Initial Exploration Rate: {args.initial_exploration}")
-    logger.info(f"  - Final Exploration Rate: 0.05")
+    logger.info(
+        f"  - Final Exploration Rate: {training_exploration_end if not args.compare_only else 'N/A (compare-only mode)'}"
+    )
     logger.info(f"  - Decay Method: {args.decay_method}")
-    logger.info(f"  - Decay Rate: 0.999")
+    logger.info(f"  - Decay Rate: {training_decay_rate if not args.compare_only else 'N/A (compare-only mode)'}")
 
     logger.info("\nRL Hyperparameters:")
-    logger.info(f"  - Learning Rate: 0.0001")
-    logger.info(f"  - Batch Size: 32")
-    logger.info(f"  - Target Update Frequency: 75")
-    logger.info(f"  - Discount Factor: 0.95")
-    logger.info(f"  - Replay Buffer Capacity: 10000")
+    logger.info(
+        f"  - Learning Rate: {training_rl_learning_rate if not args.compare_only else 'N/A (compare-only mode)'}"
+    )
+    logger.info(f"  - Batch Size: {training_rl_batch_size if not args.compare_only else 'N/A (compare-only mode)'}")
+    logger.info(
+        f"  - Target Update Frequency: {training_rl_target_update_frequency if not args.compare_only else 'N/A (compare-only mode)'}"
+    )
+    logger.info(
+        f"  - Discount Factor: {training_rl_discount_factor if not args.compare_only else 'N/A (compare-only mode)'}"
+    )
+    logger.info(
+        f"  - Replay Buffer Capacity: {training_rl_replay_buffer_capacity if not args.compare_only else 'N/A (compare-only mode)'}"
+    )
 
     logger.info("\nReward Parameters:")
-    logger.info(f"  - Bundling Reward: 0.5")
-    logger.info(f"  - Postponement Penalty: 0.0")
-    logger.info(f"  - On-time Reward: 0.0")
+    logger.info(
+        f"  - Bundling Reward: {training_rl_bundling_reward if not args.compare_only else 'N/A (compare-only mode)'}"
+    )
+    logger.info(
+        f"  - Postponement Penalty: {training_rl_postponement_penalty if not args.compare_only else 'N/A (compare-only mode)'}"
+    )
+    logger.info(
+        f"  - On-time Reward: {training_rl_on_time_reward if not args.compare_only else 'N/A (compare-only mode)'}"
+    )
     logger.info("=" * 50 + "\n")
 
 
