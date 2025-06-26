@@ -1154,6 +1154,31 @@ def compare_models(
     rl_avg_utilization = np.mean(rl_metrics.get("vehicle_utilizations", [0]))
     rl_avg_travel_time = np.mean(rl_metrics.get("total_travel_times", [0]))
 
+    # Calculate distance per order using idle-rate method for realistic estimates
+    from training.core.stats import calculate_idle_rate_distance
+    heuristic_idle_rate_distances = []
+    rl_idle_rate_distances = []
+    
+    # Calculate idle-rate distances for all runs
+    for i in range(len(heuristic_metrics.get("total_orders", []))):
+        if i < len(heuristic_stats_list):
+            stats = heuristic_stats_list[i]
+            idle_distance = calculate_idle_rate_distance(stats, 720)  # 12 hours
+            heuristic_idle_rate_distances.append(idle_distance)
+    
+    for i in range(len(rl_metrics.get("total_orders", []))):
+        if i < len(rl_stats_list):
+            stats = rl_stats_list[i]
+            idle_distance = calculate_idle_rate_distance(stats, 720)  # 12 hours
+            rl_idle_rate_distances.append(idle_distance)
+    
+    # Calculate average distance per order using idle-rate method
+    heuristic_avg_idle_distance = np.mean(heuristic_idle_rate_distances) if heuristic_idle_rate_distances else 0
+    rl_avg_idle_distance = np.mean(rl_idle_rate_distances) if rl_idle_rate_distances else 0
+    
+    heuristic_avg_distance_per_order = heuristic_avg_idle_distance / max(1, heuristic_avg_orders_delivered)
+    rl_avg_distance_per_order = rl_avg_idle_distance / max(1, rl_avg_orders_delivered)
+
     logger.info("\nComparison Results:")
     logger.info(f"{'Metric':<25} {'Heuristic ACA':<20} {'RL-based ACA':<20} {'Improvement':<15}")
     logger.info(f"{'-'*70}")
@@ -1177,6 +1202,9 @@ def compare_models(
     )
     logger.info(
         f"{'Average Distance':<25} {heuristic_avg_distance:<20.2f} km {rl_avg_distance:<20.2f} km {((rl_avg_distance - heuristic_avg_distance) / heuristic_avg_distance) * 100:<15.2f}%"
+    )
+    logger.info(
+        f"{'Distance per Order':<25} {heuristic_avg_distance_per_order:<20.2f} km {rl_avg_distance_per_order:<20.2f} km {((rl_avg_distance_per_order - heuristic_avg_distance_per_order) / max(0.001, heuristic_avg_distance_per_order)) * 100:<15.2f}%"
     )
     logger.info(
         f"{'Vehicle Utilization':<25} {heuristic_avg_utilization:<20.2f}% {rl_avg_utilization:<20.2f}% {(rl_avg_utilization - heuristic_avg_utilization):<15.2f}pp"

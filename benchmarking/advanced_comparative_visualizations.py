@@ -24,47 +24,77 @@ class AdvancedBenchmarkVisualizer:
         self.viz_dir.mkdir(parents=True, exist_ok=True)
 
         # Color schemes for methods
-        self.method_colors = {"fastest": "#2E86AB", "aca": "#A23B72", "rl_aca": "#F18F01"}  # Blue  # Purple  # Orange
+        self.method_colors = {
+            "RL-ACA (4-Phase)": "#F18F01",       # Orange - 4-phase RL model
+            "RL-ACA (1-Phase)": "#FF6B6B",       # Red - 1-phase RL model
+            "Fastest ACA": "#2E86AB",            # Blue - Baseline
+            "ACA (Buffer=17)": "#A23B72",        # Purple - Heuristic
+            "Meituan Baseline": "#63B600"        # Green - Meituan's method
+        }
 
         self.method_labels = {
-            "fastest": "FV (Fastest Vehicle)",
-            "aca": "ACA (Heuristic)",
-            "rl_aca": "RL-ACA (Reinforcement Learning)",
+            "RL-ACA (4-Phase)": "RL-ACA (4-Phase)",
+            "RL-ACA (1-Phase)": "RL-ACA (1-Phase)",
+            "Fastest ACA": "Fastest ACA",
+            "ACA (Buffer=17)": "ACA (Buffer=17)",
+            "Meituan Baseline": "Meituan Baseline",
         }
 
     def load_data(self, csv_path: str = None) -> pd.DataFrame:
         """Load benchmark results data."""
         if csv_path is None:
-            # Look for filtered files first, then original files
-            filtered_files = list(self.results_dir.glob("fastest_aca_filtered_results_*.csv"))
-            csv_files = list(self.results_dir.glob("benchmark_results_*.csv"))
-            combined_files = list(self.results_dir.glob("combined_with_baseline_*.csv"))
-
-            # Prioritize filtered files if they exist
-            if filtered_files:
-                csv_path = max(filtered_files, key=lambda x: x.stat().st_mtime)
+            # Look for fixed filenames first, then timestamped files
+            benchmark_file = self.results_dir / "benchmark_results.csv"
+            filtered_file = self.results_dir / "fastest_aca_filtered_results.csv"
+            
+            if filtered_file.exists():
+                csv_path = filtered_file
                 print(f"📊 Using FILTERED data: {csv_path.name}")
+            elif benchmark_file.exists():
+                csv_path = benchmark_file
+                print(f"📊 Using benchmark data: {csv_path.name}")
             else:
-                # Fall back to original files
-                all_files = csv_files + combined_files
+                # Fall back to timestamped files
+                filtered_files = list(self.results_dir.glob("fastest_aca_filtered_results_*.csv"))
+                csv_files = list(self.results_dir.glob("benchmark_results_*.csv"))
+                combined_files = list(self.results_dir.glob("combined_with_baseline_*.csv"))
 
-                if not all_files:
-                    raise FileNotFoundError(
-                        "No benchmark results found! Looking for 'benchmark_results_*.csv', 'combined_with_baseline_*.csv', or 'fastest_aca_filtered_results_*.csv'"
-                    )
-                csv_path = max(all_files, key=lambda x: x.stat().st_mtime)
-                print(f"📊 Using original data: {csv_path.name}")
+                # Prioritize filtered files if they exist
+                if filtered_files:
+                    csv_path = max(filtered_files, key=lambda x: x.stat().st_mtime)
+                    print(f"📊 Using FILTERED data: {csv_path.name}")
+                else:
+                    # Fall back to original files
+                    all_files = csv_files + combined_files
+
+                    if not all_files:
+                        raise FileNotFoundError(
+                            "No benchmark results found! Looking for 'benchmark_results.csv', 'fastest_aca_filtered_results.csv', or timestamped versions"
+                        )
+                    csv_path = max(all_files, key=lambda x: x.stat().st_mtime)
+                    print(f"📊 Using timestamped data: {csv_path.name}")
 
         df = pd.read_csv(csv_path)
 
+        # Filter for only the methods we want to visualize
+        desired_methods = [
+            "rl_aca",              # Old RL model 
+            "rl_aca_phase1_final", # New 4-phase RL model
+            "fastest_aca",         # Fastest ACA baseline
+            "aca_17",              # ACA heuristic with buffer=17
+        ]
+        
+        # Filter the dataframe to only include desired methods
+        df = df[df["method"].isin(desired_methods)]
+        print(f"📊 Filtered to {len(desired_methods)} methods: {', '.join(desired_methods)}")
+        print(f"📊 Available methods in data: {', '.join(df['method'].unique())}")
+
         # Handle method name mapping for your specific data
         method_mapping = {
+            "rl_aca": "RL-ACA (4-Phase)",
+            "rl_aca_phase1_final": "RL-ACA (1-Phase)",
+            "fastest_aca": "Fastest ACA",
             "aca_17": "ACA (Buffer=17)",
-            "fastest_aca": "FV (Fastest Vehicle)",
-            "rl_aca": "RL-ACA (Reinforcement Learning)",
-            "meituan_baseline": "Meituan Baseline",
-            "fastest": "FV (Fastest Vehicle)",
-            "aca": "ACA (Heuristic)",
         }
 
         # Add readable method labels

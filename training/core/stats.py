@@ -61,3 +61,22 @@ def calculate_capacity_metrics(stats, simulation_duration, cooldown_duration, wa
     stats["active_period_capacity"] = stats["active_period_orders_per_hour"] * 24
 
     return stats
+
+
+def calculate_idle_rate_distance(stats, simulation_duration, vehicle_speed_kmh=16):
+    """Calculate distance using idle-rate method for more realistic estimates."""
+    idle_rates = stats.get("active_period_idle_rates_by_vehicle", {})
+    
+    if not idle_rates:
+        return 0
+    
+    # Calculate average vehicle utilization
+    vehicle_utilizations = [1 - sum(rates)/len(rates) for rates in idle_rates.values() if rates]
+    avg_utilization = sum(vehicle_utilizations) / len(vehicle_utilizations) if vehicle_utilizations else 0
+    
+    # Calculate productive distance
+    vehicle_speed_km_per_minute = vehicle_speed_kmh / 60
+    num_vehicles = len(idle_rates)
+    total_productive_distance = avg_utilization * simulation_duration * num_vehicles * vehicle_speed_km_per_minute
+    
+    return total_productive_distance

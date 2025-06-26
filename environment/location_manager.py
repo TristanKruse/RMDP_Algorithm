@@ -25,6 +25,12 @@ class LocationManager:
         dy = loc2.y - loc1.y
         return np.sqrt(dx * dx + dy * dy) / self.movement_per_step
 
+    def get_distance(self, loc1: Location, loc2: Location) -> float:
+        """Calculate actual distance in km between two locations."""
+        dx = loc2.x - loc1.x
+        dy = loc2.y - loc1.y
+        return np.sqrt(dx * dx + dy * dy)
+
     def interpolate_position(self, start: Location, end: Location, progress: float) -> Location:
         if not 0 <= progress <= 1:
             raise ValueError("Progress must be between 0 and 1")

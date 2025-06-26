@@ -27,6 +27,7 @@ from pathlib import Path
 from datetime import datetime
 import argparse
 import pandas as pd
+import numpy as np
 from typing import Optional, List, Dict
 
 # Add project root to path for imports
@@ -59,6 +60,7 @@ class IncrementalModelBenchmarker:
             "max_delay",
             "avg_distance_per_order",
             "total_delay",
+            "postponement_rate",
         ]
 
         # Import here to avoid circular imports
@@ -123,22 +125,41 @@ class IncrementalModelBenchmarker:
             logger.error(f"Error reading results file: {e}")
             return False
 
-    def benchmark_new_model(self, model_name: str) -> str:
-        """Benchmark the new model and return the output file path. Runs 1 episode per dataset."""
-        logger.info(f"Starting benchmark for new model: {model_name}")
-        logger.info(f"Benchmarking {model_name} on {len(self.districts) * len(self.days)} datasets...")
+    def benchmark_all_methods(self, model_name: str = None) -> str:
+        """Benchmark new RL model only (incremental benchmarking)."""
+        
+        # Only benchmark the new RL model - baseline methods already exist
+        if not model_name:
+            logger.error("No model name provided for incremental benchmarking")
+            return None
+            
+        methods = [
+            {"name": model_name, "solver": "rl_aca", "needs_model": True, "buffer": 17}
+        ]
+        
+        logger.info(f"Starting incremental benchmark for new model: {model_name}")
+        logger.info(f"Methods: {[m['name'] for m in methods]}")
+        logger.info(f"Datasets per method: {len(self.districts) * len(self.days)}")
 
-        results = []
-        total_datasets = len(self.districts) * len(self.days)
+        all_results = []
+        total_combinations = len(methods) * len(self.districts) * len(self.days)
         completed = 0
 
-        for district in self.districts:
-            for day in self.days:
-                completed += 1
-                logger.info(f"Progress: {completed}/{total_datasets} - District {district}, Day {day}")
+        for method in methods:
+            logger.info(f"\n🚀 Starting benchmarking for method: {method['name']}")
+            
+            # Skip RL method if no model provided
+            if method['needs_model'] and not model_name:
+                logger.warning(f"Skipping {method['name']} - no model provided")
+                continue
 
-                # Configure data for this dataset
-                meituan_config = self.MeituanDataConfig(
+            for district in self.districts:
+                for day in self.days:
+                    completed += 1
+                    logger.info(f"Progress: {completed}/{total_combinations} - {method['name']} District {district}, Day {day}")
+
+                    # Configure data for this dataset
+                    meituan_config = self.MeituanDataConfig(
                     district_id=district,
                     day=day,
                     use_restaurant_positions=True,  # Use real restaurant positions
@@ -152,75 +173,146 @@ class IncrementalModelBenchmarker:
                     simulation_duration_hours=12,  # Run for 12 hours (adjust as needed)
                 )
 
-                # Run single episode for this dataset
-                seed = (district * 1000) + (int(day[-2:]) * 10000)
+                    # Run single episode for this dataset
+                    seed = (district * 1000) + (int(day[-2:]) * 10000)
 
-                try:
-                    stats = self.run_test_episode(
-                        solver_name="rl_aca",  # Always use rl_aca for new models
-                        meituan_config=meituan_config,
-                        seed=seed,
-                        reposition_idle_vehicles=False,
-                        visualize=False,
-                        warmup_duration=0,
-                        save_results_to_disk=False,  # Disable disk saving to avoid to_dict error
-                        aca_buffer=17,
-                        exploration_rate=0,  # For RL-ACA, set exploration rate to 0 for evaluation
-                    )
+                    try:
+                        # Configure method-specific parameters
+                        run_params = {
+                            "solver_name": method["solver"],
+                            "meituan_config": meituan_config,
+                            "seed": seed,
+                            "reposition_idle_vehicles": False,
+                            "visualize": False,
+                            "warmup_duration": 0,
+                            "save_results_to_disk": False,
+                            "aca_buffer": method.get("buffer", 17),
+                            "exploration_rate": 0,
+                            "training_mode": False,
+                            "save_rl_model": False
+                        }
+                        
+                        # Add model path for RL method
+                        if method["needs_model"]:
+                            model_path = str(self.models_dir / f"{model_name}.pt")
+                            run_params["rl_model_path"] = model_path
+                        
+                        stats = self.run_test_episode(**run_params)
 
-                    # Store results
-                    result = {
-                        "district": district,
-                        "day": day,
-                        "method": model_name,
-                    }
+                        # Calculate KPIs using EXACT same logic as train_rl.py compare_models
+                        total_orders = stats.get('total_orders', 1)
+                        orders_delivered = stats.get('orders_delivered', 0)
+                        late_orders = stats.get('late_orders', set())
+                        delay_values = stats.get('delay_values', [])
+                        total_distance = stats.get('total_distance', 0)
+                        postponed_orders = stats.get('postponed_orders', set())
+                        
+                        # 1. total_delay: same as compare_models
+                        total_delay = sum(delay_values) if delay_values else 0
+                        
+                        # 2. on_time_rate: EXACT same logic as compare_models
+                        total_orders_calc = max(1, orders_delivered)  # compare_models uses orders_delivered
+                        late_count = len(late_orders)
+                        on_time_rate = ((total_orders_calc - late_count) / total_orders_calc) * 100
+                        
+                        # 3. avg_delay_late_orders: average of delay_values (same as compare_models)
+                        avg_delay_late = sum(delay_values) / len(delay_values) if delay_values else 0
+                        
+                        # 4. postponement_rate: EXACT same logic as compare_models
+                        postponement_rate = len(postponed_orders) / max(1, total_orders) * 100
+                        
+                        # 5. avg_distance_per_order: Use idle-rate method for realistic estimates
+                        from training.core.stats import calculate_idle_rate_distance
+                        simulation_duration = 720  # 12 hours in minutes
+                        total_productive_distance = calculate_idle_rate_distance(stats, simulation_duration)
+                        avg_distance_per_order = total_productive_distance / max(1, orders_delivered)
+                        
+                        # 6. vehicle_utilization: same as compare_models
+                        idle_rates = stats.get("active_period_idle_rates_by_vehicle", {})
+                        if idle_rates:
+                            vehicle_utilizations = [1 - np.mean(rates) for rates in idle_rates.values() if rates]
+                            active_period_idle_rate = np.mean(vehicle_utilizations) if vehicle_utilizations else 0
+                        else:
+                            active_period_idle_rate = 0
+                        
+                        # Store results with calculated KPIs (using compare_models logic)
+                        result = {
+                            "district": district,
+                            "day": day,
+                            "method": method["name"],  # Use actual method name
+                            "on_time_delivery_rate": on_time_rate,
+                            "avg_delay_late_orders": avg_delay_late,
+                            "avg_distance_per_order": avg_distance_per_order,
+                            "total_delay": total_delay,  # Calculated from delay_values
+                            "max_delay": stats.get('max_delay', 0),
+                            "active_period_idle_rate": active_period_idle_rate,  # Calculated from vehicle idle rates
+                            "postponement_rate": postponement_rate,  # Added postponement KPI
+                        }
 
-                    for kpi in self.kpis:
-                        result[kpi] = stats.get(kpi, 0)
+                        # Log detailed results for debugging
+                        logger.info(f"   📊 Results for {method['name']} - District {district}, Day {day}:")
+                        logger.info(f"      Total/Delivered: {total_orders}/{orders_delivered} ({orders_delivered/total_orders*100:.1f}%)")
+                        logger.info(f"      On-time rate: {on_time_rate:.1f}% ({total_orders_calc-late_count}/{total_orders_calc} on-time)")
+                        logger.info(f"      Postponement rate: {postponement_rate:.1f}% ({len(postponed_orders)}/{total_orders} postponed)")
+                        logger.info(f"      Avg delay (late): {avg_delay_late:.1f} min")
+                        logger.info(f"      Avg distance per delivered order: {avg_distance_per_order:.1f} km")
+                        logger.info(f"      Total delay (calculated): {total_delay:.1f} min (from delay_values)")
+                        logger.info(f"      Active idle rate (calculated): {active_period_idle_rate:.3f} (from {len(idle_rates)} vehicles)")
 
-                    results.append(result)
+                        all_results.append(result)
 
-                except Exception as e:
-                    logger.error(f"Error in District {district}, Day {day}: {e}")
-                    continue
+                    except Exception as e:
+                        logger.error(f"Error in {method['name']} District {district}, Day {day}: {e}")
+                        continue
 
-        # Save new results
-        new_df = pd.DataFrame(results)
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        new_results_file = self.results_dir / f"new_model_benchmark_{model_name}_{timestamp}.csv"
-        new_df.to_csv(new_results_file, index=False)
+        # Save new model results
+        all_df = pd.DataFrame(all_results)
+        new_results_file = self.results_dir / f"new_model_results_{model_name}.csv"
+        all_df.to_csv(new_results_file, index=False)
 
-        logger.info(f"Completed benchmarking for {model_name}: {len(results)} results")
+        logger.info(f"Completed benchmarking for {model_name}: {len(all_results)} total results")
         logger.info(f"Saved new model results to: {new_results_file}")
+        
+        # Print summary by method
+        if all_results:
+            summary_df = all_df.groupby('method').size().reset_index(name='count')
+            logger.info(f"\n📊 Results summary by method:")
+            for _, row in summary_df.iterrows():
+                logger.info(f"   {row['method']}: {row['count']} datasets")
 
         return str(new_results_file)
 
     def combine_with_existing_results(
         self, new_results_file: str, existing_results_file: Optional[Path], model_name: str
     ) -> str:
-        """Combine new model results with existing results."""
+        """Combine new model results with existing results using fixed file names."""
         new_df = pd.read_csv(new_results_file)
 
-        if existing_results_file and existing_results_file.exists():
-            existing_df = pd.read_csv(existing_results_file)
+        # Use fixed file name for benchmark results
+        benchmark_results_file = self.results_dir / "benchmark_results.csv"
+        
+        if benchmark_results_file.exists():
+            existing_df = pd.read_csv(benchmark_results_file)
 
             # Remove any existing data for this model (in case of replacement)
             existing_df = existing_df[existing_df["method"] != model_name]
 
             # Combine datasets
             combined_df = pd.concat([existing_df, new_df], ignore_index=True)
-            logger.info(f"Combined {len(existing_df)} existing + {len(new_df)} new = {len(combined_df)} total records")
+            logger.info(f"Updated benchmark_results.csv: {len(existing_df)} existing + {len(new_df)} new = {len(combined_df)} total records")
         else:
             combined_df = new_df
-            logger.info(f"No existing results to combine with, using {len(new_df)} new records")
+            logger.info(f"Created new benchmark_results.csv with {len(new_df)} records")
 
-        # Save combined results
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        combined_file = self.results_dir / f"benchmark_results_{timestamp}.csv"
-        combined_df.to_csv(combined_file, index=False)
-
-        logger.info(f"Saved combined results to: {combined_file}")
-        return str(combined_file)
+        # Save to fixed file name
+        combined_df.to_csv(benchmark_results_file, index=False)
+        logger.info(f"Saved combined results to: benchmark_results.csv")
+        
+        # Clean up temporary file
+        import os
+        os.remove(new_results_file)
+        
+        return str(benchmark_results_file)
 
 
 class BenchmarkingRunner:
@@ -292,7 +384,7 @@ class BenchmarkingRunner:
         # 4. Run benchmarking for new model
         logger.info(f"🚀 Benchmarking new model: {model_name}")
         try:
-            new_results_file = self.incremental_benchmarker.benchmark_new_model(model_name)
+            new_results_file = self.incremental_benchmarker.benchmark_all_methods(model_name)
 
             # 5. Combine with existing results
             combined_file = self.incremental_benchmarker.combine_with_existing_results(
@@ -530,12 +622,12 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python main_benchmarking.py                                      # DEFAULT: Detect and benchmark new model, then run analysis
-  python main_benchmarking.py --model-name phase2_final           # Benchmark with custom model name
-  python main_benchmarking.py --start-fresh                       # Start fresh with new model
-  python main_benchmarking.py --skip-model-benchmark              # Skip model benchmarking, only run analysis
-  python main_benchmarking.py --skip-existing                     # Skip analysis steps with existing output
-  python main_benchmarking.py --check-files                       # Just check file status
+  python benchmarking/main_benchmarking.py                                     # DEFAULT: Detect and benchmark new model, then run analysis
+  python benchmarking/main_benchmarking.py --model-name phase2_final           # Benchmark with custom model name
+  python benchmarking/main_benchmarking.py --start-fresh                       # Start fresh with new model
+  python benchmarking/main_benchmarking.py --skip-model-benchmark              # Skip model benchmarking, only run analysis
+  python benchmarking/main_benchmarking.py --skip-existing                     # Skip analysis steps with existing output
+  python benchmarking/main_benchmarking.py --check-files                       # Just check file status
         """,
     )
 

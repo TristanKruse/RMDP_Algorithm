@@ -15,20 +15,14 @@ logger = logging.getLogger(__name__)
 
 
 def find_latest_benchmark_file():
-    """Find the most recent benchmark results file."""
+    """Find the benchmark results file (fixed name)."""
     results_dir = Path("data/simulation_results")
-
-    # Look for both patterns
-    csv_files = list(results_dir.glob("benchmark_results_*.csv"))
-    combined_files = list(results_dir.glob("combined_with_baseline_*.csv"))
-
-    all_files = csv_files + combined_files
-
-    if not all_files:
-        raise FileNotFoundError("No benchmark results found!")
-
-    latest_file = max(all_files, key=lambda x: x.stat().st_mtime)
-    return latest_file
+    benchmark_file = results_dir / "benchmark_results.csv"
+    
+    if not benchmark_file.exists():
+        raise FileNotFoundError("benchmark_results.csv not found!")
+    
+    return benchmark_file
 
 
 def filter_fastest_aca_negative_districts(df):
@@ -249,18 +243,17 @@ def main():
         # 4. Analyze results
         analyze_remaining_performance(filtered_df)
 
-        # 5. Save results
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        # 5. Save results with fixed file names
         output_dir = Path("data/simulation_results")
 
         # Save filtered data
-        filtered_file = output_dir / f"fastest_aca_filtered_results_{timestamp}.csv"
+        filtered_file = output_dir / "filtered_results.csv"
         filtered_df.to_csv(filtered_file, index=False)
         print(f"💾 Saved filtered data: {filtered_file}")
 
         # Save filtering report
         report = generate_fastest_aca_filter_report(df, filtered_df, removed_districts)
-        report_file = output_dir / f"fastest_aca_filtering_report_{timestamp}.md"
+        report_file = output_dir / "filtering_report.md"
         with open(report_file, "w") as f:
             f.write(report)
         print(f"📋 Saved filtering report: {report_file}")
