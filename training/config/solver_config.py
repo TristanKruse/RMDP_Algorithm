@@ -11,9 +11,9 @@ SOLVERS = {
         max_postpone_time=0,
         # Time & Vehicle parameters
         vehicle_capacity=5,  # test 5
-        service_time=3.0,
-        mean_prep_time=13.4,
-        delivery_window=39.0,
+        service_time=6.0,  # 30-sec intervals: 3 min = 6 timesteps
+        mean_prep_time=26.8,  # 30-sec intervals: 13.4 min = 26.8 timesteps
+        delivery_window=78.0,  # 30-sec intervals: 39 min = 78 timesteps
         # Default to heuristic postponement
         postponement_method="heuristic",
     ),
@@ -27,9 +27,9 @@ SOLVERS = {
         # Vehicle parameters
         vehicle_capacity=5,
         # Time parameters
-        service_time=3.0,
-        mean_prep_time=13.4,
-        delivery_window=39.0,
+        service_time=6.0,  # 30-sec intervals: 3 min = 6 timesteps
+        mean_prep_time=26.8,  # 30-sec intervals: 13.4 min = 26.8 timesteps
+        delivery_window=78.0,  # 30-sec intervals: 39 min = 78 timesteps
         # Use RL-based postponement
         postponement_method="rl-aca",
         rl_training_mode=True,

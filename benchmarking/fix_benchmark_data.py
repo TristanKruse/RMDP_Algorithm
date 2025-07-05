@@ -2,7 +2,7 @@
 """
 Fix benchmark data consistency issues:
 1. Filter rl_aca_phase1_final to same districts as other methods  
-2. Update method labels (rl_aca = 4-phase, rl_aca_phase1_final = 1-phase)
+2. Update method labels (rl_aca = rl-aca, rl_aca_phase1_final = 1-phase)
 """
 
 import pandas as pd

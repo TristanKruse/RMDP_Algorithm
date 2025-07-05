@@ -63,7 +63,7 @@ def calculate_capacity_metrics(stats, simulation_duration, cooldown_duration, wa
     return stats
 
 
-def calculate_idle_rate_distance(stats, simulation_duration, vehicle_speed_kmh=16):
+def calculate_idle_rate_distance(stats, simulation_duration, vehicle_speed_kmh=8):
     """Calculate distance using idle-rate method for more realistic estimates."""
     idle_rates = stats.get("active_period_idle_rates_by_vehicle", {})
     

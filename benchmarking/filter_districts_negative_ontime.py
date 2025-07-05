@@ -15,14 +15,22 @@ logger = logging.getLogger(__name__)
 
 
 def find_latest_benchmark_file():
-    """Find the benchmark results file (fixed name)."""
+    """Find the most recent benchmark results file."""
     results_dir = Path("data/simulation_results")
+    
+    # Look for timestamped files first, then fall back to fixed name
+    benchmark_files = list(results_dir.glob("benchmark_results_*.csv"))
+    if benchmark_files:
+        # Return the most recent timestamped file
+        latest_file = max(benchmark_files, key=lambda x: x.stat().st_mtime)
+        return latest_file
+    
+    # Fall back to fixed name
     benchmark_file = results_dir / "benchmark_results.csv"
+    if benchmark_file.exists():
+        return benchmark_file
     
-    if not benchmark_file.exists():
-        raise FileNotFoundError("benchmark_results.csv not found!")
-    
-    return benchmark_file
+    raise FileNotFoundError("benchmark_results.csv not found!")
 
 
 def filter_fastest_aca_negative_districts(df):
@@ -246,17 +254,30 @@ def main():
         # 5. Save results with fixed file names
         output_dir = Path("data/simulation_results")
 
-        # Save filtered data
-        filtered_file = output_dir / "filtered_results.csv"
-        filtered_df.to_csv(filtered_file, index=False)
-        print(f"💾 Saved filtered data: {filtered_file}")
+        # Save filtered data with both timestamped and fixed filename patterns
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        
+        # Timestamped version for history
+        timestamped_file = output_dir / f"fastest_aca_filtered_results_{timestamp}.csv"
+        filtered_df.to_csv(timestamped_file, index=False)
+        print(f"💾 Saved timestamped filtered data: {timestamped_file}")
+        
+        # Fixed name version for current use
+        fixed_file = output_dir / "fastest_aca_filtered_results.csv"
+        filtered_df.to_csv(fixed_file, index=False)
+        print(f"💾 Saved current filtered data: {fixed_file}")
 
-        # Save filtering report
+        # Save filtering report with both versions
         report = generate_fastest_aca_filter_report(df, filtered_df, removed_districts)
-        report_file = output_dir / "filtering_report.md"
-        with open(report_file, "w") as f:
+        report_file_timestamped = output_dir / f"filtering_report_{timestamp}.md"
+        report_file_fixed = output_dir / "filtering_report.md"
+        
+        # Save both versions of the report
+        with open(report_file_timestamped, "w") as f:
             f.write(report)
-        print(f"📋 Saved filtering report: {report_file}")
+        with open(report_file_fixed, "w") as f:
+            f.write(report)
+        print(f"📋 Saved filtering reports: {report_file_timestamped} and {report_file_fixed}")
 
         # Summary
         if len(filtered_df) > 0:
@@ -270,13 +291,13 @@ def main():
                 print(f"{method:20s}: {avg_ontime:6.1f}% ({districts} districts)")
 
             print(f"\n✅ Filtering completed!")
-            print(f"🔗 Use this file for analysis: {filtered_file}")
+            print(f"🔗 Use this file for analysis: {fixed_file}")
         else:
             print(f"\n⚠️  WARNING: ALL DISTRICTS FILTERED OUT!")
             print(f"This suggests fundamental simulation issues.")
             print(f"Review the filtering report for details.")
 
-        return filtered_file
+        return fixed_file
 
     except Exception as e:
         logger.error(f"Filtering failed: {e}")

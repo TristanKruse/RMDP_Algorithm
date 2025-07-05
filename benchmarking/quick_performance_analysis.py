@@ -7,7 +7,7 @@ import pandas as pd
 import numpy as np
 
 def analyze_rl_performance():
-    """Compare RL-ACA 4-Phase vs 1-Phase performance."""
+    """Compare RL-ACA vs 1-Phase RL-ACA performance."""
     
     # Load data
     df = pd.read_csv("data/simulation_results/benchmark_results.csv")
@@ -27,7 +27,7 @@ def analyze_rl_performance():
     
     print("RL-ACA Performance Comparison")
     print("=" * 50)
-    print("4-Phase = rl_aca (curriculum learning)")
+    print("RL-ACA = rl_aca (curriculum learning)")
     print("1-Phase = rl_aca_phase1_final (hypertuned single phase)\n")
     
     for metric in metrics:
@@ -43,13 +43,13 @@ def analyze_rl_performance():
         better_higher = metric in ["on_time_delivery_rate"]
         
         if better_higher:
-            winner = "4-Phase" if phase4_mean > phase1_mean else "1-Phase"
+            winner = "RL-ACA" if phase4_mean > phase1_mean else "1-Phase"
             improvement = abs(phase4_mean - phase1_mean)
         else:
-            winner = "4-Phase" if phase4_mean < phase1_mean else "1-Phase"  
+            winner = "RL-ACA" if phase4_mean < phase1_mean else "1-Phase"  
             improvement = abs(phase4_mean - phase1_mean)
         
-        print(f"  4-Phase: {phase4_mean:.2f}")
+        print(f"  RL-ACA: {phase4_mean:.2f}")
         print(f"  1-Phase: {phase1_mean:.2f}")
         print(f"  Winner: {winner} (difference: {improvement:.2f})")
         print()
@@ -79,13 +79,13 @@ def analyze_rl_performance():
             else:
                 wins_1phase += 1
     
-    print(f"4-Phase (Curriculum) wins: {wins_4phase}/{len(metrics)} metrics")
+    print(f"RL-ACA (Curriculum) wins: {wins_4phase}/{len(metrics)} metrics")
     print(f"1-Phase (Hypertuned) wins: {wins_1phase}/{len(metrics)} metrics")
     
     if wins_1phase > wins_4phase:
         print("\n🔍 FINDING: 1-Phase hypertuned model outperforms curriculum learning approach")
     else:
-        print("\n🔍 FINDING: 4-Phase curriculum learning approach is superior")
+        print("\n🔍 FINDING: RL-ACA curriculum learning approach is superior")
 
 if __name__ == "__main__":
     analyze_rl_performance()

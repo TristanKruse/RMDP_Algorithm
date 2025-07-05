@@ -120,7 +120,7 @@ def check_kpi_extraction():
         
         # Assume 12-hour simulation (720 minutes) and 16 km/h speed
         simulation_time_minutes = 720  # 12 hours
-        vehicle_speed_km_per_minute = 16 / 60  # 16 km/h = 0.267 km/min
+        vehicle_speed_km_per_minute = 8 / 60  # 8 km/h = 0.133 km/min (30-sec intervals)
         num_vehicles = len(idle_rates)
         
         # Total productive distance = utilization × time × vehicles × speed

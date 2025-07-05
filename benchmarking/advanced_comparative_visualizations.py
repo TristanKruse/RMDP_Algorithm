@@ -25,7 +25,7 @@ class AdvancedBenchmarkVisualizer:
 
         # Color schemes for methods
         self.method_colors = {
-            "RL-ACA (4-Phase)": "#F18F01",       # Orange - 4-phase RL model
+            "RL-ACA": "#F18F01",                 # Orange - RL model
             "RL-ACA (1-Phase)": "#FF6B6B",       # Red - 1-phase RL model
             "Fastest ACA": "#2E86AB",            # Blue - Baseline
             "ACA (Buffer=17)": "#A23B72",        # Purple - Heuristic
@@ -33,7 +33,7 @@ class AdvancedBenchmarkVisualizer:
         }
 
         self.method_labels = {
-            "RL-ACA (4-Phase)": "RL-ACA (4-Phase)",
+            "RL-ACA": "RL-ACA",
             "RL-ACA (1-Phase)": "RL-ACA (1-Phase)",
             "Fastest ACA": "Fastest ACA",
             "ACA (Buffer=17)": "ACA (Buffer=17)",
@@ -79,7 +79,7 @@ class AdvancedBenchmarkVisualizer:
         # Filter for only the methods we want to visualize
         desired_methods = [
             "rl_aca",              # Old RL model 
-            "rl_aca_phase1_final", # New 4-phase RL model
+            "rl_aca_phase1_final", # 1-phase RL model
             "fastest_aca",         # Fastest ACA baseline
             "aca_17",              # ACA heuristic with buffer=17
         ]
@@ -91,7 +91,7 @@ class AdvancedBenchmarkVisualizer:
 
         # Handle method name mapping for your specific data
         method_mapping = {
-            "rl_aca": "RL-ACA (4-Phase)",
+            "rl_aca": "RL-ACA",
             "rl_aca_phase1_final": "RL-ACA (1-Phase)",
             "fastest_aca": "Fastest ACA",
             "aca_17": "ACA (Buffer=17)",

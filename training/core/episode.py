@@ -102,7 +102,7 @@ def run_test_episode(
 ):
     """Main function to run a test episode with the specified solver."""
     simulation_duration = get_env_config(None)["simulation_duration"]
-    speed = 16  # 40.0 km/h in paper, 16 km/h in Meituan data
+    speed = 8  # 8 km/h for 30-second intervals (was 16 km/h for 1-minute intervals)
     street_network_factor = 1.0  # 1.4 in paper, we calculated the average speed over the euclidic distance
     movement_per_step = (speed / 60) / street_network_factor  # km per minute adjusted for street network
 

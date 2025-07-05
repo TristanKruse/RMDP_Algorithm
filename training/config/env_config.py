@@ -8,19 +8,19 @@ def get_env_config(movement_per_step):
         "num_restaurants": 80,  # 20, 80, 320
         "num_vehicles": 40,  # 10, 40, 160
         # Time parameters
-        "mean_prep_time": 13.4,  # 13.4 # Gamma distributed preparation time (minutes)
-        "prep_time_var": 20.9,  # 2.0 # Preparation time variance
-        "delivery_window": 39,  # Delivery time window (minutes)
-        "simulation_duration": 600,  # 420 # Total simulation time (minutes)
-        "cooldown_duration": 60,  # No new orders in final period (minutes)
+        "mean_prep_time": 26.8,  # 26.8 # Gamma distributed preparation time (timesteps, 30-sec interval)
+        "prep_time_var": 41.8,  # 41.8 # Preparation time variance (30-sec interval)
+        "delivery_window": 78,  # Delivery time window (timesteps, 30-sec interval)
+        "simulation_duration": 1200,  # 1200 # Total simulation time (timesteps, 30-sec interval)
+        "cooldown_duration": 120,  # No new orders in final period (timesteps, 30-sec interval)
         # "warmup_duration": 60,  # 1 hour warmup
         # Workload parameters
-        "mean_interarrival_time": 2,  # 8, 2, 0.5
+        "mean_interarrival_time": 4,  # 4 # Order arrival interval (timesteps, 30-sec interval)
         # Area parameters
         "service_area_dimensions": (6.0, 6.0),  # 10km x 10km area
         "downtown_concentration": 0.71,  # Restaurant concentration downtown
         # Service parameters
-        "service_time": 3.0,  # 4.0 # Time at pickup/delivery locations
+        "service_time": 6.0,  # 6.0 # Time at pickup/delivery locations (timesteps, 30-sec interval)
         "movement_per_step": movement_per_step,
         # Visualization
         "visualize": False,
