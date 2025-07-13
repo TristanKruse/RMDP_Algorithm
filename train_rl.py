@@ -975,6 +975,70 @@ def evaluate_model(
     return metrics
 
 
+def perform_statistical_test(heuristic_data: List[float], rl_data: List[float], metric_name: str) -> Dict:
+    """
+    Perform paired t-test to compare two groups of performance metrics.
+    
+    Paired t-test was chosen because:
+    - Compares paired observations (same seeds) to reduce variance from different scenarios
+    - More sensitive to algorithmic differences by controlling for random factors
+    - Each heuristic episode is compared to the corresponding RL episode with same seed
+    - Reduces noise from different order patterns, timing, and random events
+    - Standard approach for algorithm comparison studies in operations research
+    - Provides both statistical significance and effect size for practical significance
+    
+    Args:
+        heuristic_data: List of metric values for heuristic method (ordered by seed)
+        rl_data: List of metric values for RL method (ordered by same seeds)
+        metric_name: Name of the metric being tested
+        
+    Returns:
+        Dictionary containing test results
+    """
+    results = {
+        'metric': metric_name,
+        'heuristic_mean': np.mean(heuristic_data),
+        'heuristic_std': np.std(heuristic_data),
+        'rl_mean': np.mean(rl_data), 
+        'rl_std': np.std(rl_data),
+        'sample_sizes': {'heuristic': len(heuristic_data), 'rl': len(rl_data)}
+    }
+    
+    # Check if sample sizes match (required for paired test)
+    if len(heuristic_data) != len(rl_data):
+        results['unequal_samples'] = True
+        return results
+    
+    # Check if we have enough data for statistical tests
+    if len(heuristic_data) < 2:
+        results['insufficient_data'] = True
+        return results
+    
+    # Calculate paired differences
+    differences = np.array(rl_data) - np.array(heuristic_data)
+    
+    # Check if differences are all zero (no variance in differences)
+    if np.std(differences) == 0:
+        results['no_difference'] = True
+        return results
+    
+    # Paired t-test
+    try:
+        t_stat, t_pvalue = stats.ttest_rel(rl_data, heuristic_data)
+        results['t_test'] = {
+            'statistic': t_stat,
+            'p_value': t_pvalue,
+            'significant': t_pvalue < 0.05,
+            'effect_size': np.mean(differences) / np.std(differences),  # Cohen's d for paired data
+            'mean_difference': np.mean(differences),
+            'std_difference': np.std(differences)
+        }
+    except Exception as e:
+        results['t_test'] = {'error': str(e)}
+    
+    return results
+
+
 def compare_models(
     heuristic_episodes: int = 5,
     rl_episodes: int = 5,
@@ -1257,6 +1321,74 @@ def compare_models(
     logger.info(
         f"{'Average Travel Time':<25} {heuristic_avg_travel_time:<20.2f} min {rl_avg_travel_time:<20.2f} min {((rl_avg_travel_time - heuristic_avg_travel_time) / heuristic_avg_travel_time) * 100:<15.2f}%"
     )
+
+    # Perform statistical significance tests
+    logger.info("\n" + "="*80)
+    logger.info("STATISTICAL SIGNIFICANCE ANALYSIS")
+    logger.info("="*80)
+    
+    # Define metrics to test
+    metrics_to_test = [
+        ('total_rewards', 'Total Reward'),
+        ('total_delays', 'Total Delay'),
+        ('on_time_rates', 'On-Time Rate'),
+        ('postponement_rates', 'Postponement Rate'),
+        ('total_orders', 'Total Orders'),
+        ('orders_delivered', 'Orders Delivered'),
+        ('total_distances', 'Total Distance'),
+        ('vehicle_utilizations', 'Vehicle Utilization'),
+        ('total_travel_times', 'Total Travel Time')
+    ]
+    
+    statistical_results = {}
+    
+    for metric_key, metric_name in metrics_to_test:
+        if metric_key in heuristic_metrics and metric_key in rl_metrics:
+            heuristic_data = heuristic_metrics[metric_key]
+            rl_data = rl_metrics[metric_key]
+            
+            # Perform statistical test
+            test_results = perform_statistical_test(heuristic_data, rl_data, metric_name)
+            statistical_results[metric_key] = test_results
+            
+            # Log results
+            logger.info(f"\n{metric_name.upper()} ANALYSIS:")
+            logger.info(f"  Sample sizes: Heuristic={len(heuristic_data)}, RL={len(rl_data)}")
+            logger.info(f"  Means: Heuristic={test_results['heuristic_mean']:.4f}, RL={test_results['rl_mean']:.4f}")
+            logger.info(f"  Std Devs: Heuristic={test_results['heuristic_std']:.4f}, RL={test_results['rl_std']:.4f}")
+            
+            if test_results.get('unequal_samples'):
+                logger.info("  ⚠️  Unequal sample sizes - cannot perform paired t-test")
+            elif test_results.get('insufficient_data'):
+                logger.info("  ⚠️  Insufficient data for statistical test (n < 2)")
+            elif test_results.get('no_difference'):
+                logger.info("  ⚠️  No variance in paired differences - identical performance")
+            else:
+                # Report paired t-test results
+                if 't_test' in test_results and 'error' not in test_results['t_test']:
+                    t_test = test_results['t_test']
+                    significance_symbol = "✅" if t_test['significant'] else "❌"
+                    logger.info(f"  Paired t-test: {significance_symbol} p={t_test['p_value']:.6f}, effect_size={t_test['effect_size']:.4f}")
+                    logger.info(f"  Mean difference (RL - Heuristic): {t_test['mean_difference']:.4f} ± {t_test['std_difference']:.4f}")
+    
+    # Summary of significant differences
+    logger.info("\n" + "="*50)
+    logger.info("SIGNIFICANCE SUMMARY")
+    logger.info("="*50)
+    
+    significant_metrics = []
+    for metric_key, results in statistical_results.items():
+        if not any([results.get('unequal_samples'), results.get('insufficient_data'), results.get('no_difference')]):
+            if 't_test' in results and 'error' not in results['t_test']:
+                if results['t_test']['significant']:
+                    significant_metrics.append(metrics_to_test[next(i for i, (k, _) in enumerate(metrics_to_test) if k == metric_key)][1])
+    
+    if significant_metrics:
+        logger.info(f"✅ Statistically significant differences found in: {', '.join(significant_metrics)}")
+    else:
+        logger.info("❌ No statistically significant differences found (p < 0.05)")
+    
+    logger.info("="*80)
 
     # Create comparison plots as line charts
     plt.figure(figsize=(15, 12))
