@@ -16,3 +16,9 @@ presentation_visualizations/*
 TO_do.md
 Pseudo-Code for ACA.txt
 hyper_results.md
+claude
+train.py
+benchmarking
+thesis-latex/
+data/benchmarking_results/
+data/benchmarking_tuning/
