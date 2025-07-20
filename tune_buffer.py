@@ -58,16 +58,16 @@ def tune_vehicle_buffer():
     env_config = {
         "num_restaurants": 20,
         "num_vehicles": 10,
-        "mean_prep_time": 13.4,
-        "prep_time_var": 20.9,
-        "delivery_window": 39,
-        "simulation_duration": 600,
+        "mean_prep_time": 26.8,
+        "prep_time_var": 41.8,
+        "delivery_window": 78,
+        "simulation_duration": 1200,
         "cooldown_duration": 0,
-        "mean_interarrival_time": 8,
+        "mean_interarrival_time": 16,
         "service_area_dimensions": (6.0, 6.0),
         "downtown_concentration": 0.71,
-        "service_time": 3.0,
-        "movement_per_step": (16.0 / 60) / 1.0,
+        "service_time": 6.0,
+        "movement_per_step": (8.0 / 60) / 1.0,
         "visualize": False,
         "update_interval": 0.01,
         "reposition_idle_vehicles": False,
@@ -76,7 +76,7 @@ def tune_vehicle_buffer():
     }
 
     # Buffer sizes to test: 0 to 35
-    buffer_sizes = list(range(40))  # [0, 1, 2, ..., 39]
+    buffer_sizes = list(range(79))  # [0, 1, 2, ..., 39] # adjusted for 30 seconds
     num_episodes = 100  # Increased to 100 for robust SAA
 
     # Metrics to track
@@ -111,24 +111,56 @@ def tune_vehicle_buffer():
                 aca_buffer=buffer_size,
             )
 
+            # Calculate on_time_delivery_rate from late orders
+            late_orders_count = len(stats["late_orders"]) if isinstance(stats["late_orders"], set) else stats.get("late_orders_count", 0)
+            total_orders = stats["total_orders"]
+            on_time_delivery_rate = ((total_orders - late_orders_count) / total_orders * 100) if total_orders > 0 else 0
+            
+            # Calculate percentage_late_orders
+            percentage_late_orders = (late_orders_count / total_orders * 100) if total_orders > 0 else 0
+            
+            # Calculate avg_delay_late_orders from delay_values of late orders
+            delay_values = stats.get("delay_values", [])
+            avg_delay_late_orders = sum(delay_values) / len(delay_values) if delay_values else 0
+            
+            # Calculate bundling rate
+            bundled_orders = len(stats.get("bundled_orders", set())) if isinstance(stats.get("bundled_orders", set()), set) else 0
+            bundling_rate = (bundled_orders / total_orders * 100) if total_orders > 0 else 0
+            
+            # Calculate avg_distance_per_order
+            avg_distance_per_order = stats.get("total_distance", 0) / total_orders if total_orders > 0 else 0
+
+            # Calculate total_delay from delay_values (it's not properly saved in stats)
+            total_delay = sum(stats.get("delay_values", []))
+            
+            # Calculate active_period_idle_rate from idle_rates_by_vehicle
+            idle_rates_by_vehicle = stats.get("active_period_idle_rates_by_vehicle", {})
+            if idle_rates_by_vehicle:
+                all_idle_rates = []
+                for vehicle_rates in idle_rates_by_vehicle.values():
+                    all_idle_rates.extend(vehicle_rates)
+                active_period_idle_rate = sum(all_idle_rates) / len(all_idle_rates) if all_idle_rates else 0
+            else:
+                active_period_idle_rate = stats.get("average_idle_rate", 0)
+
             # Store metrics
-            results[buffer_size]["on_time_delivery_rate"].append(stats["on_time_delivery_rate"])
-            results[buffer_size]["total_delay"].append(stats["total_delay"])
-            results[buffer_size]["late_orders"].append(stats["late_orders_count"])
-            results[buffer_size]["percentage_late_orders"].append(stats["percentage_late_orders"])
-            results[buffer_size]["avg_delay_late_orders"].append(stats["avg_delay_late_orders"])
-            results[buffer_size]["bundling_rate"].append(stats.get("bundling_rate", 0))
-            results[buffer_size]["avg_distance_per_order"].append(stats["avg_distance_per_order"])
-            results[buffer_size]["active_period_idle_rate"].append(stats["active_period_idle_rate"])
+            results[buffer_size]["on_time_delivery_rate"].append(on_time_delivery_rate)
+            results[buffer_size]["total_delay"].append(total_delay)
+            results[buffer_size]["late_orders"].append(late_orders_count)
+            results[buffer_size]["percentage_late_orders"].append(percentage_late_orders)
+            results[buffer_size]["avg_delay_late_orders"].append(avg_delay_late_orders)
+            results[buffer_size]["bundling_rate"].append(bundling_rate)
+            results[buffer_size]["avg_distance_per_order"].append(avg_distance_per_order)
+            results[buffer_size]["active_period_idle_rate"].append(active_period_idle_rate)
 
             if episode % 10 == 0:
                 logger.info(
                     f"  Episode {episode}/{num_episodes}, "
                     f"Total Orders: {stats['total_orders']}, "
                     f"Delivered: {stats['orders_delivered']}, "
-                    f"Late Orders: {stats['late_orders_count']}, "
+                    f"Late Orders: {late_orders_count}, "
                     f"Total Delay: {stats['total_delay']:.2f} minutes, "
-                    f"Fill Rate: {stats['on_time_delivery_rate']:.1f}%"
+                    f"Fill Rate: {on_time_delivery_rate:.1f}%"
                 )
 
     # Compute sample averages and standard deviations for each metric

@@ -77,11 +77,11 @@ class OrderGenerator:
         # Store simulation reference time (first order time)
         self.simulation_start_time = self.real_orders_df['order_push_time'].min()
         
-        # Convert timestamps to simulation time (minutes from start)
+        # Convert timestamps to simulation time (timesteps from start)
         if isinstance(self.simulation_start_time, pd.Timestamp):
-            # Convert order creation time to simulation minutes
+            # Convert order creation time to simulation timesteps (30-second intervals)
             self.real_orders_df['sim_time'] = (self.real_orders_df['order_push_time'] - 
-                                               self.simulation_start_time).dt.total_seconds() / 60
+                                               self.simulation_start_time).dt.total_seconds() / 30
         else:
             # Handle numeric timestamps
             self.real_orders_df['sim_time'] = self.real_orders_df['order_push_time'] - self.simulation_start_time

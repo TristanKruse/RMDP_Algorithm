@@ -6,7 +6,7 @@ SOLVERS = {
     "aca": lambda movement_per_step, location_manager: ACA(
         location_manager=location_manager,
         # Core algorithm parameters
-        buffer=17,
+        buffer=14,
         max_postponements=0,
         max_postpone_time=0,
         # Time & Vehicle parameters
@@ -21,7 +21,7 @@ SOLVERS = {
     "rl_aca": lambda movement_per_step, location_manager: ACA(
         location_manager=location_manager,
         # Core algorithm parameters
-        buffer=17,
+        buffer=14,
         max_postponements=0,
         max_postpone_time=0,
         # Vehicle parameters

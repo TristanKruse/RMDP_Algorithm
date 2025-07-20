@@ -405,8 +405,9 @@ class MeituanDataConfig:
 
         # Override simulation duration if using time window with real orders
         if self.order_generation_mode == "replay" and self.simulation_duration_hours is not None:
-            # Convert hours to minutes for simulation duration
-            updated_params["simulation_duration"] = self.simulation_duration_hours * 60
+            # Convert hours to timesteps for simulation duration
+            # For 30-second timesteps: hours * 60 minutes/hour * 2 timesteps/minute = hours * 120 timesteps/hour
+            updated_params["simulation_duration"] = self.simulation_duration_hours * 120
 
             # Adjust cooldown duration if necessary to ensure it doesn't exceed simulation duration
             cooldown_ratio = 0.1  # Make cooldown 10% of total simulation
@@ -420,33 +421,33 @@ class MeituanDataConfig:
         """Create an OrderGenerator based on configuration"""
         if self.order_generation_mode == "default":
             return OrderGenerator(
-                mean_interarrival_time=env_params.get("mean_interarrival_time", 2.0),
+                mean_interarrival_time=env_params.get("mean_interarrival_time", 16.0),
                 service_area_dimensions=env_params.get("service_area_dimensions", (10.0, 10.0)),
-                delivery_window=env_params.get("delivery_window", 40.0),
-                service_time=env_params.get("service_time", 2.0),
-                mean_prep_time=env_params.get("mean_prep_time", 10.0),
-                prep_time_var=env_params.get("prep_time_var", 2.0),
+                delivery_window=env_params.get("delivery_window", 78.0),
+                service_time=env_params.get("service_time", 6.0),
+                mean_prep_time=env_params.get("mean_prep_time", 26.8),
+                prep_time_var=env_params.get("prep_time_var", 41.8),
                 mode="default",
             )
         elif self.order_generation_mode == "pattern":
             return OrderGenerator(
-                mean_interarrival_time=env_params.get("mean_interarrival_time", 2.0),
+                mean_interarrival_time=env_params.get("mean_interarrival_time", 16.0),
                 service_area_dimensions=env_params.get("service_area_dimensions", (10.0, 10.0)),
-                delivery_window=env_params.get("delivery_window", 40.0),
-                service_time=env_params.get("service_time", 2.0),
-                mean_prep_time=env_params.get("mean_prep_time", 10.0),
-                prep_time_var=env_params.get("prep_time_var", 2.0),
+                delivery_window=env_params.get("delivery_window", 78.0),
+                service_time=env_params.get("service_time", 6.0),
+                mean_prep_time=env_params.get("mean_prep_time", 26.8),
+                prep_time_var=env_params.get("prep_time_var", 41.8),
                 mode="pattern",
                 temporal_pattern=self.temporal_pattern,
             )
         elif self.order_generation_mode == "replay":
             return OrderGenerator(
-                mean_interarrival_time=env_params.get("mean_interarrival_time", 2.0),
+                mean_interarrival_time=env_params.get("mean_interarrival_time", 16.0),
                 service_area_dimensions=env_params.get("service_area_dimensions", (10.0, 10.0)),
-                delivery_window=env_params.get("delivery_window", 40.0),
-                service_time=env_params.get("service_time", 2.0),
-                mean_prep_time=env_params.get("mean_prep_time", 10.0),
-                prep_time_var=env_params.get("prep_time_var", 2.0),
+                delivery_window=env_params.get("delivery_window", 78.0),
+                service_time=env_params.get("service_time", 6.0),
+                mean_prep_time=env_params.get("mean_prep_time", 26.8),
+                prep_time_var=env_params.get("prep_time_var", 41.8),
                 mode="replay",
                 real_orders_df=self.orders_df,
                 use_real_deadlines=self.use_deadlines,

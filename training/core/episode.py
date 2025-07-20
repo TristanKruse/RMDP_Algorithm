@@ -98,7 +98,9 @@ def run_test_episode(
     rl_bundling_reward: float = 0.05,
     rl_postponement_penalty: float = -0.005,
     rl_on_time_reward: float = 0.2,
-    aca_buffer: int = 15,  # To override ACA buffer size, for buffer tuning
+    aca_buffer: int = 14,  # To override ACA buffer size, for buffer tuning
+    aca_max_postponements: int = 0,  # To override ACA max postponements
+    aca_max_postpone_time: int = 0,  # To override ACA max postpone time
 ):
     """Main function to run a test episode with the specified solver."""
     simulation_duration = get_env_config(None)["simulation_duration"]
@@ -197,23 +199,23 @@ def run_test_episode(
             "aca": lambda movement_per_step, location_manager: ACA(
                 location_manager=location_manager,
                 buffer=aca_buffer,
-                max_postponements=0,
-                max_postpone_time=0,
+                max_postponements=aca_max_postponements,
+                max_postpone_time=aca_max_postpone_time,
                 vehicle_capacity=5,
-                service_time=4.0,
-                mean_prep_time=13,
-                delivery_window=35.0,
+                service_time=6.0,
+                mean_prep_time=26.8,
+                delivery_window=78.0,
                 postponement_method="heuristic",
             ),
             "rl_aca": lambda movement_per_step, location_manager: ACA(
                 location_manager=location_manager,
-                buffer=15,
+                buffer=14,
                 max_postponements=3,
                 max_postpone_time=10,
-                vehicle_capacity=3,
-                service_time=2.0,
-                mean_prep_time=13,
-                delivery_window=40.0,
+                vehicle_capacity=5,
+                service_time=6.0,
+                mean_prep_time=26.8,
+                delivery_window=78.0,
                 postponement_method="rl-aca",
                 rl_training_mode=training_mode,
                 rl_state_size=7,

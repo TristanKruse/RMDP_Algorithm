@@ -36,10 +36,10 @@ class RestaurantMealDeliveryEnv:
         service_area_dimensions: Tuple[float, float] = (10.0, 10.0),  # 10km x 10km area
         mean_prep_time: float = 10.0,  # Average food preparation time in minutes
         prep_time_var: float = 2.0,  # Variance in preparation time
-        delivery_window: float = 40.0,  # Time allowed for delivery after order placement
+        delivery_window: float = 78.0,  # Time allowed for delivery after order placement
         # could be made stochastic (if makes sense)
         downtown_concentration: float = 0.7,
-        service_time: float = 2.0,  # Time spent at pickup/delivery locations
+        service_time: float = 6.0,  # Time spent at pickup/delivery locations
         mean_interarrival_time: float = 2.0,  # Average orders per hour per vehicle
         simulation_duration: float = 480.0,  # New parameter in minutes
         cooldown_duration: float = 60.0,  # Add cooldown parameter

@@ -44,9 +44,9 @@ class ACA:
         # Vehicle parameters
         vehicle_capacity: int = 3,
         # Time parameters
-        service_time: float = 2.0,
-        mean_prep_time: float = 10.0,
-        delivery_window: float = 40.0,
+        service_time: float = 6.0,
+        mean_prep_time: float = 26.8,
+        delivery_window: float = 78.0,
         # RL parameters
         postponement_method: str = "heuristic",  # "heuristic" or "rl-aca"
         rl_training_mode: bool = True,

@@ -6,7 +6,7 @@ import numpy as np
 from datetime import datetime
 from tqdm import tqdm
 from typing import Dict, List, Tuple
-from training.train import run_test_episode
+from training.core.episode import run_test_episode
 import json
 import shutil
 from environment.environment import RestaurantMealDeliveryEnv
