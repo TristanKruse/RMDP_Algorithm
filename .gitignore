@@ -26,3 +26,4 @@ data/benchmarking_tuning/.
 .gitmodules
 abb/*
 data/meituan_benchmark/*
+data/*
