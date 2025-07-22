@@ -13,22 +13,6 @@ This thesis project tackles the Restaurant Meal Delivery Problem using real-worl
 - **Adaptive Decision Making**: Learns optimal assignment windows through feature engineering and temporal patterns
 
 
-## Results Summary
-
-**Algorithm Performance (120 validated scenarios):**
-
-| Method | On-Time Rate | Avg Distance/Order | Total Delay | Idle Rate |
-|--------|-------------|-------------------|-------------|-----------|
-| **RL-ACA** | 85.22% ±21.10% | **8.11 km ±1.28** | 826.71 min | **28.8% ±0.127** |
-| ACA-17 | 86.03% ±21.03% | 8.58 km ±1.25 | 770.95 min | 30.31% ±0.129 |
-| Fastest ACA | 86.04% ±21.07% | 8.59 km ±1.26 | 766.53 min | 30.31% ±0.130 |
-
-**Key Findings:**
-- **✅ H1 Confirmed**: RL-ACA reduces average distance by 5.5-5.6% (p<0.001, large effect)
-- **⚠️ H2 Confirmed**: Lower on-time rates (-0.81pp) but improved efficiency in high-stress scenarios (+4.41pp)
-- **📊 Postponement Strategy**: 61.05% dynamic postponement rate enables strategic bundling
-- **🎯 Context-Dependent**: Excels in complex urban environments, trade-offs in simpler scenarios
-
 ## Features
 
 - **RL-ACA Algorithm**: Dynamic postponement using Deep Q-Network with state features (time, congestion, bundling potential)
